@@ -84,3 +84,13 @@ Unless you explicitly state otherwise, any contribution intentionally
 submitted for inclusion in the work by you, as defined in the Apache-2.0
 license, shall be dual licensed as above, without any additional terms or
 conditions.
+
+
+![Alt text](sss.gif)
+
+### Roadmap:
+
+- [x] Basic water flow dynamics
+- [x] Render a real-world height data
+- [ ] Show simulated area on real map
+- [ ] Pre-select water cells then run simulation
