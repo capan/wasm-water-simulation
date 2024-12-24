@@ -1,5 +1,5 @@
 import { Universe } from "wasm-water-simulation";
-import { memory } from "wasm-water-simulation/wasm_water_simulation_bg";
+import { __wbindgen_memory } from "../pkg/wasm_water_simulation_bg";
 
 const CELL_SIZE = 15; // px
 const GRID_COLOR = "#CCCCCC";
@@ -15,7 +15,7 @@ Universe.new().then(async (universe) => {
     //     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     //     maxZoom: 19,
     // }).addTo(map);
-
+    const memory = await __wbindgen_memory();
     const width = universe.width();
     const height = universe.height();
     // Give the canvas room for all of our cells and a 1px border
@@ -25,41 +25,46 @@ Universe.new().then(async (universe) => {
     canvas.width = (CELL_SIZE + 1) * width + 1;
     const ctx = canvas.getContext('2d');
     let animationId = null;
-    let msWaitTicks = 0;
+    let msWaitTicks = 900;
     let count = 0;
     const playPauseButton = document.getElementById("play-pause");
     const stepButton = document.getElementById("step");
-
+    const speedDisplay = document.getElementById('speed-display');
     const tickRange = document.getElementById('tick-range');
-
+    tickRange.addEventListener('input', () => {
+        msWaitTicks = (100 - tickRange.value) * 10;
+        speedDisplay.textContent = `Render Speed: ${1000 / msWaitTicks} FPS`;
+    });
+    tickRange.value = 666; // Default value
     tickRange.setAttribute('data-value', tickRange.value);
     tickRange.addEventListener('input', () => {
         tickRange.setAttribute('data-value', tickRange.value);
         msWaitTicks = (100 - tickRange.value) * 10;
-        cancelAnimationFrame(animationId);
-        animationId = null;
+        console.log(`Adjusted msWaitTicks to: ${msWaitTicks}`);
     });
 
     const iterationCount = document.getElementById("iteration");
     const heightInfo = document.getElementById('height');
     const locationInfo = document.getElementById('row-col');
 
-    const renderLoop = () => {
-        // if (count < 1) {
-        universe.tick();
-        drawCells();
+    let lastRenderTime = 0;
+    const renderLoop = (timestamp) => {
+        if (!lastRenderTime || timestamp - lastRenderTime >= msWaitTicks) {
+            lastRenderTime = timestamp;
+            universe.tick();
+            drawCells();
+            iterationCount.textContent = `Current iteration: ${animationId}`;
+        }
         animationId = requestAnimationFrame(renderLoop);
-        iterationCount.textContent = `Current iteration: ${animationId}`;
-        // }
-        // count += 1
-    }
+    };
 
     const isPaused = () => {
         return animationId === null;
     };
     const play = () => {
         playPauseButton.textContent = "⏸";
-        renderLoop();
+        lastRenderTime = 0; // Reset to avoid unnecessary delay
+        animationId = requestAnimationFrame(renderLoop);
     };
 
     const pause = () => {
@@ -68,7 +73,7 @@ Universe.new().then(async (universe) => {
         animationId = null;
     };
 
-    playPauseButton.addEventListener("click", event => {
+    playPauseButton.addEventListener("click", () => {
         if (isPaused()) {
             play();
         } else {
@@ -76,7 +81,7 @@ Universe.new().then(async (universe) => {
         }
     });
 
-    stepButton.addEventListener("click", (event) => {
+    stepButton.addEventListener("click", () => {
         universe.tick();
         drawCells();
         animationId = requestAnimationFrame(renderLoop);
@@ -112,16 +117,19 @@ Universe.new().then(async (universe) => {
         const maxHeight = universe.max_height();
         const minHeight = universe.min_height();
         const cellsPtr = universe.cells();
-        const cells = new Uint32Array(memory.buffer, cellsPtr, width * height);
         const waterCellsPtr = universe.water_cell_locations();
         const waterCellsCount = universe.water_cells_count();
+        const cells = new Uint32Array(memory.buffer, cellsPtr, width * height);
         const originalArray = new Uint32Array(memory.buffer, waterCellsPtr, waterCellsCount * 2);
         const waterCells = Array.from(originalArray);
         const waterCellsMap = {};
+        if (cellsPtr + width * height * Uint32Array.BYTES_PER_ELEMENT > memory.buffer.byteLength) {
+            console.error("Cells pointer exceeds memory buffer bounds!");
+        }
         while (waterCells.length) {
             const splicedArray = waterCells.splice(0, 2);
             waterCellsMap[splicedArray.join("")] = splicedArray;
-        };
+        }
         ctx.beginPath();
         for (let row = 0; row < height; row++) {
             for (let col = 0; col < width; col++) {
@@ -130,7 +138,7 @@ Universe.new().then(async (universe) => {
                 if (waterCellsMap[key]) {
                     ctx.fillStyle = WATER_COLOR;
                 } else {
-                    const normalized = (cells[idx] - minHeight) * (255 - 0) / (maxHeight - minHeight)
+                    const normalized = (cells[idx] - minHeight) * (255) / (maxHeight - minHeight)
                     ctx.fillStyle = `rgb(
                     ${normalized},
                     ${normalized},
@@ -161,12 +169,10 @@ Universe.new().then(async (universe) => {
         universe.handle_user_input(row, col);
     })
 
-
     drawGrid();
     drawCells();
     requestAnimationFrame(renderLoop);
 }).catch((err) => {
-    debugger
     console.log(err)
 });
 

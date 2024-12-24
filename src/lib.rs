@@ -2,15 +2,16 @@ mod utils;
 
 // use std::{fs::File, io::Read};
 
-use tiff::decoder::ifd::Value;
+// use tiff::decoder::ifd::Value;
 use tiff::decoder::Decoder;
 use tiff::decoder::DecodingResult;
-use tiff::tags::Tag;
-use tiff::TiffError;
+// use tiff::tags::Tag;
+// use tiff::TiffError;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{console, Request, RequestInit};
+// use gdal::Dataset;
 
 // use rand::Rng;
 extern crate geotiff;
@@ -40,11 +41,19 @@ pub struct Cell {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+type WaterCellLocation = (u32, u32, u32);
+
+#[wasm_bindgen]
 pub struct Universe {
     width: u32,
     height: u32,
     cells: Vec<Cell>,
-    water_cell_locations: Vec<(u32, u32)>,
+    water_cell_locations: Vec<WaterCellLocation>,
     max_height: u32,
     min_height: u32,
     // model_tie_point_tag: Result<Option<Value>, TiffError>,
@@ -55,22 +64,33 @@ pub struct Universe {
 #[wasm_bindgen]
 impl Universe {
     pub fn handle_user_input(&mut self, row: f64, col: f64) {
-        self.water_cell_locations.push((row as u32, col as u32))
+        let cell_age = 0;
+        self.water_cell_locations.push((row as u32, col as u32, cell_age))
     }
     pub fn tick(&mut self) {
-        let mut next_water_cell_locations = self.water_cell_locations.clone();
-        for (index, cell_location) in self.water_cell_locations.clone().iter().enumerate() {
-            let flow_direction = self.calculate_flow_direction(cell_location.0, cell_location.1);
-            let new_cell_location = self.calculate_next_position_from_direction(
-                cell_location.0,
-                cell_location.1,
-                flow_direction,
-            );
-            next_water_cell_locations.remove(index);
-            next_water_cell_locations.insert(index, new_cell_location);
+        let current_water_cell_locations = self.water_cell_locations.clone();
+        let mut next_water_cell_locations = Vec::new();
+
+        for &(x, y, age) in &current_water_cell_locations {
+            if age > 50 {
+                continue;
+            }
+            let flow_direction = self.calculate_flow_direction(x, y);
+            log(&format!("Flow direction for ({}, {}, age: {}): {}", x, y , age, flow_direction));
+
+            if flow_direction.is_empty() {
+                // If no flow direction, keep the cell with incremented age
+                next_water_cell_locations.push((x, y, age + 1));
+            } else {
+                // Calculate the new position based on the flow direction
+                let (new_x, new_y) = self.calculate_next_position_from_direction(x, y, flow_direction);
+                next_water_cell_locations.push((new_x, new_y, age + 1));
+            }
         }
-        self.water_cell_locations = next_water_cell_locations
+        self.water_cell_locations = next_water_cell_locations;
     }
+
+
     fn calculate_flow_direction(&mut self, row: u32, column: u32) -> String {
         let error_message = String::from("Calculate flow direction error!");
         let current_cell_height = self
@@ -138,7 +158,8 @@ impl Universe {
         let height = s;
         let max_height = data.iter().map(|x| *x as u32).max().unwrap();
         let min_height = data.iter().map(|x| *x as u32).min().unwrap();
-        let water_cell_locations = vec![(49, 49), (48, 48), (47, 47), (46, 46), (45, 45)];
+        // let water_cell_locations = vec![];
+        let water_cell_locations = vec![(0, 0, 0)];
         // let model_tie_point_tag = data.1;
         // let model_pixel_scale_tag = data.2;
         // let geokey_directory_tag = data.3;
@@ -163,7 +184,7 @@ impl Universe {
     pub fn cells(&self) -> *const Cell {
         self.cells.as_ptr()
     }
-    pub fn water_cell_locations(&self) -> *const (u32, u32) {
+    pub fn water_cell_locations(&self) -> *const (u32, u32, u32) {
         self.water_cell_locations.as_ptr()
     }
     pub fn water_cells_count(&self) -> usize {
@@ -245,18 +266,20 @@ impl Universe {
             "https://wasm-water-simulation.s3.eu-central-1.amazonaws.com/public/small_sakarya2.tif",
         );
         let window = web_sys::window().unwrap();
-        let mut opts = RequestInit::new();
-        opts.method("GET");
+        let opts = RequestInit::new();
+        opts.set_method("GET");
         let request = Request::new_with_str_and_init(&url, &opts).expect("Request Error!");
         let resp_value = JsFuture::from(window.fetch_with_request(&request))
             .await
             .expect("Fetching data");
-        let resp: web_sys::Response = resp_value.dyn_into().expect("Dny");
+        let resp: web_sys::Response = resp_value.dyn_into().expect("Denied!");
 
         let resp_array_buffer = JsFuture::from(resp.array_buffer().expect("to Buffer error"))
             .await
             .expect("async op error");
         let data = js_sys::Uint8Array::new(&resp_array_buffer).to_vec();
+        // gdal::config::set_config_option("GDAL_DATA", "/opt/homebrew/Cellar/gdal/3.8.4/");
+        // let dataset = Dataset::open("path/to/your/small_sakarya2.tif")?;
 
         let mut cursor = Cursor::new(Vec::new());
         cursor.write_all(&data[..])?;
@@ -266,8 +289,8 @@ impl Universe {
         let decoding_result = decoder.read_image()?;
 
         // let model_tie_point_tag: Result<Option<Value>, TiffError> = decoder.find_tag(Tag::ModelTiepointTag);
-        let model_pixel_scale_tag: Result<Option<Value>, TiffError> = decoder.find_tag(Tag::ModelPixelScaleTag);
-        let geokey_directory_tag: Result<Option<Value>, TiffError> = decoder.find_tag(Tag::GeoKeyDirectoryTag);
+        // let model_pixel_scale_tag: Result<Option<Value>, TiffError> = decoder.find_tag(Tag::ModelPixelScaleTag);
+        // let geokey_directory_tag: Result<Option<Value>, TiffError> = decoder.find_tag(Tag::GeoKeyDirectoryTag);
 
         let vec_image: Vec<i32> = match decoding_result {
             DecodingResult::U8(image_data) => image_data

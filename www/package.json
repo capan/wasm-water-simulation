@@ -30,10 +30,11 @@
     "wasm-water-simulation": "file:../pkg"
   },
   "devDependencies": {
+    "copy-webpack-plugin": "^5.0.0",
     "hello-wasm-pack": "^0.1.0",
-    "webpack": "^4.29.3",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.5",
-    "copy-webpack-plugin": "^5.0.0"
+    "wasm-loader": "^1.3.0",
+    "webpack": "^5.97.1",
+    "webpack-cli": "6.0.1",
+    "webpack-dev-server": "5.2.0"
   }
 }

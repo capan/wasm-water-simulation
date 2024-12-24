@@ -1,3 +1,6 @@
+[target.'cfg(all(target_arch = "wasm32", target_os = "macos"))'.dependencies]
+ring = { version = "0.17.8", features = ["wasm32_unknown_unknown_js"]}
+
 [package]
 name = "wasm-water-simulation"
 version = "0.1.0"
@@ -30,8 +33,9 @@ getrandom = { version = "0.2", features = ["js"] }
 tiff = "0.8.0"
 image = "0.24.5"
 geotiff = "0.0.2"
-minreq = { version = "2.6.0", features = ["https"] }
-webpki = "0.22.0"
+#minreq = { version = "2.6.0", features = ["https"] }
+#webpki = "0.22.0"
+#ring = "0.17.8"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
@@ -51,3 +55,5 @@ features = [
 [profile.release]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
+lto = true
+
