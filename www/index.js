@@ -2,6 +2,7 @@ import { Universe } from "wasm-water-simulation";
 import { fetchElevation } from "./elevation.mjs";
 import { gridBounds, latLonToCell, MAX_GRID, ZOOM } from "./tiles.mjs";
 import { radarFrames, fetchRain } from "./rain.mjs";
+import { fetchSoil, infiltrationGrid } from "./soil.mjs";
 
 const MAX_CANVAS_PX = 720; // longest canvas edge; cell size is derived from it
 const WATER_COLOR = "#0339fc";
@@ -72,6 +73,7 @@ function boot(data, grid) {
   sim = {
     universe, width, height, cell, grid,
     rain: null, // {rates, wet, frameTime, covered}, filled in once radar arrives
+    soil: null, // {rates, covered}, filled in once the soil survey arrives
     terrain: renderTerrain(data, width, height, universe, 255),
     // 1 px per cell, translucent, blitted onto the map overlay
     overlay: renderTerrain(data, width, height, universe, 130),
@@ -204,7 +206,16 @@ const wetCells = (rates) => Uint32Array.from(
   (function* () { for (let i = 0; i < rates.length; i++) if (rates[i] > 0) yield i; })()
 );
 
-/** One tick's worth of rain: each wet cell gets a droplet with probability rate*factor. */
+/**
+ * One tick's worth of rain. Only the part of the rainfall the ground cannot
+ * absorb becomes runoff, so a cell spawns on `rate - capacity` rather than on
+ * `rate`: light rain on free-draining soil produces nothing at all, and the same
+ * rain on clay produces streams.
+ *
+ * Cells the soil survey does not cover fall back to the whole rate, which is
+ * what this did before soil existed. Guessing a capacity there would put
+ * invented physics over water and over most of a city.
+ */
 function spawnRain() {
   const { rain, universe, width } = sim;
   if (!rain || !rainOn()) return;
@@ -212,12 +223,15 @@ function spawnRain() {
   if (budget <= 0) return;
 
   const { wet, rates } = rain;
+  const capacity = soilOn() ? sim.soil?.rates : null;
   // Start somewhere random in the wet list: when the budget runs out mid-pass,
   // the shortfall should not always come out of the same corner of the grid.
   const start = Math.floor(Math.random() * wet.length);
   for (let n = 0; n < wet.length && budget > 0; n++) {
     const i = wet[(start + n) % wet.length];
-    if (Math.random() < rates[i] * RAIN_FACTOR) {
+    const soaks = capacity ? capacity[i] : 0;
+    const runoff = soaks > 0 ? rates[i] - soaks : rates[i];
+    if (runoff > 0 && Math.random() < runoff * RAIN_FACTOR) {
       universe.handle_user_input(Math.floor(i / width), i % width);
       budget--;
     }
@@ -388,6 +402,7 @@ async function select(bounds) {
     setStatus(`Simulating ${width}x${height} cells at zoom ${grid.z}. Click the terrain to drop water.`);
     setState(`${width}x${height}`, "ready");
     refreshRain();
+    loadSoil(grid);
   } catch (error) {
     setStatus(error.message, true);
     setState("Error", "error");
@@ -560,3 +575,42 @@ $("rain-toggle").addEventListener("change", () => {
 // Nothing to tear down on re-selection, so no poll can outlive its grid — and a
 // fetch already in flight is discarded by the grid check in showFrame.
 setInterval(refreshRain, RAIN_POLL_MS);
+
+// ---------------------------------------------------------------------- soil
+
+// Soil does not change, so unlike the radar it is fetched once per area and
+// never polled.
+async function loadSoil(grid) {
+  try {
+    const texture = await fetchSoil(grid);
+    if (sim?.grid !== grid) return; // a newer selection arrived while we waited
+
+    const { rates, covered } = infiltrationGrid(texture);
+    sim.soil = { rates, covered };
+    applySoil();
+    setSoilStatus(
+      covered === 0
+        ? "No soil survey here — drainage falls back to a flat rate."
+        : `Soil mapped for ${Math.round(covered * 100)}% of cells.`
+    );
+  } catch (error) {
+    // The simulation is perfectly usable without it: every cell falls back to
+    // the rate that was flat before soil existed.
+    setSoilStatus(`Soil data unavailable: ${error.message}`);
+    console.error(error);
+  }
+}
+
+/** Hand the grid to Rust for droplet lifetime, or take it away again. */
+function applySoil() {
+  if (!sim) return;
+  if (soilOn() && sim.soil) sim.universe.set_absorption(sim.soil.rates);
+  else sim.universe.clear_absorption();
+}
+
+const soilOn = () => $("soil-toggle")?.checked ?? true;
+
+const setSoilStatus = (text) => {
+  const el = $("soil-status");
+  if (el) el.textContent = text;
+};
