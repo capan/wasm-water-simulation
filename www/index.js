@@ -444,6 +444,9 @@ async function showFrame(index) {
   try {
     const { rates, covered, wet } = await fetchRain(grid, frame);
     if (sim?.grid !== grid) return; // a newer selection arrived while we waited
+    // Manual rain may have been switched on while this was in flight; the fetch
+    // that started before it must not overwrite what the user just asked for.
+    if (manualRate) return;
     applyRain(rates, frame.time, covered);
     setRainStatus(
       covered === 0
