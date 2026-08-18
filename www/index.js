@@ -55,6 +55,7 @@ const setState = (label, state) => {
 // live but silently does nothing is worse than one that is visibly off.
 const SIM_CONTROLS = ["play-pause", "step", "tick-range", "rain-toggle", "rain-mm"];
 const RADAR_CONTROLS = ["replay", "frame-range"];
+const SOIL_CONTROLS = ["soil-toggle"];
 const enable = (ids, on) => ids.forEach((id) => ($(id).disabled = !on));
 
 // ---------------------------------------------------------------- simulation
@@ -134,12 +135,36 @@ function renderRainLayer(rates, width, height) {
   return layer;
 }
 
+// Soil shading, painted once when the survey lands. Earthy rather than blue, so
+// it cannot be mistaken for rain or for water, and only lightly opaque so the
+// terrain relief underneath still reads. Uncovered cells stay clear — a gap in
+// the survey should look like a gap, not like a value.
+function renderSoilLayer(rates, width, height) {
+  const layer = makeCanvas(width, height);
+  const lctx = layer.getContext("2d");
+  const image = lctx.createImageData(width, height);
+  for (let i = 0; i < rates.length; i++) {
+    if (rates[i] <= 0) continue;
+    // Group D (1 mm/h) to group A (10 mm/h) is one decade, so a log ramp puts
+    // the four groups the data actually contains at even spacing.
+    const t = Math.min(1, Math.max(0, Math.log10(rates[i])));
+    image.data[i * 4] = 138 + 98 * t;
+    image.data[i * 4 + 1] = 87 + 102 * t;
+    image.data[i * 4 + 2] = 71 + 65 * t;
+    image.data[i * 4 + 3] = 74;
+  }
+  lctx.putImageData(image, 0, 0);
+  return layer;
+}
+
 function draw(pushOverlay = true) {
   const { universe, width, height, cell, terrain, overlay, frame, rain } = sim;
   const water = universe.water_cells(); // flat [row, col, ...]
   const rainLayer = rainOn() ? rain?.layer : null;
+  const soilLayer = soilOn() ? sim.soil?.layer : null;
 
   ctx.drawImage(terrain, 0, 0, canvas.width, canvas.height);
+  if (soilLayer) ctx.drawImage(soilLayer, 0, 0, canvas.width, canvas.height);
   if (rainLayer) ctx.drawImage(rainLayer, 0, 0, canvas.width, canvas.height);
   ctx.fillStyle = WATER_COLOR;
   for (let i = 0; i < water.length; i += 2) {
@@ -156,6 +181,7 @@ function draw(pushOverlay = true) {
   const fctx = frame.getContext("2d");
   fctx.clearRect(0, 0, width, height);
   fctx.drawImage(overlay, 0, 0);
+  if (soilLayer) fctx.drawImage(soilLayer, 0, 0);
   if (rainLayer) fctx.drawImage(rainLayer, 0, 0);
   fctx.fillStyle = WATER_COLOR;
   for (let i = 0; i < water.length; i += 2) fctx.fillRect(water[i + 1], water[i], 1, 1);
@@ -279,6 +305,9 @@ canvas.addEventListener("mousemove", (event) => {
   const { row, col } = cellAt(event);
   $("height").textContent = `${sim.universe.get_cell_value(row, col)} m`;
   $("row-col").textContent = `${row}, ${col}`;
+  const soaks = sim.soil?.rates[row * sim.width + col];
+  $("soil-readout").textContent =
+    soaks === undefined ? "–" : soaks > 0 ? `${soaks.toFixed(1)} mm/h` : "no survey";
 });
 
 canvas.addEventListener("click", (event) => {
@@ -571,6 +600,11 @@ $("rain-toggle").addEventListener("change", () => {
   if (sim) draw(); // show or hide the shading immediately, even while paused
 });
 
+$("soil-toggle").addEventListener("change", () => {
+  applySoil(); // drainage and shading are the same switch, so they cannot disagree
+  if (sim) draw();
+});
+
 // One timer for the life of the page, reading whichever simulation is current.
 // Nothing to tear down on re-selection, so no poll can outlive its grid — and a
 // fetch already in flight is discarded by the grid check in showFrame.
@@ -586,8 +620,10 @@ async function loadSoil(grid) {
     if (sim?.grid !== grid) return; // a newer selection arrived while we waited
 
     const { rates, covered } = infiltrationGrid(texture);
-    sim.soil = { rates, covered };
+    sim.soil = { rates, covered, layer: renderSoilLayer(rates, sim.width, sim.height) };
+    enable(SOIL_CONTROLS, true);
     applySoil();
+    draw();
     setSoilStatus(
       covered === 0
         ? "No soil survey here — drainage falls back to a flat rate."

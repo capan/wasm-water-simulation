@@ -262,7 +262,7 @@
 
       .stats {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         border-top: 1px solid var(--border-soft);
       }
       .stat {
@@ -390,6 +390,8 @@
         transition: transform 0.16s, background 0.16s;
       }
       .switch input:checked + .track { background: #2c1f52; border-color: #6d43d4; }
+      .switch input:checked + .track.soil { background: #3a2a1c; border-color: #9a7040; }
+      .switch input:checked + .track.soil::after { background: #d8bd7e; }
       .switch input:checked + .track::after { transform: translateX(17px); background: var(--rain); }
       .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
       .switch input:disabled + .track { opacity: 0.3; filter: grayscale(0.8); }
@@ -483,6 +485,10 @@
             <span class="stat-value" id="row-col">&ndash;</span>
           </div>
           <div class="stat">
+            <span class="stat-label">Soaks up</span>
+            <span class="stat-value" id="soil-readout">&ndash;</span>
+          </div>
+          <div class="stat">
             <span class="stat-label">Tick rate</span>
             <span class="stat-value" id="speed-display">&ndash;</span>
           </div>
@@ -500,6 +506,7 @@
             <span><i style="background: #0339fc"></i>Water</span>
             <span><i style="background: #8a8a8a"></i>Terrain (light = high)</span>
             <span><i style="background: transparent; border: 1px dashed #fff"></i>Map view</span>
+            <span><i style="background: #a87a55"></i>Soil</span>
           </div>
         </div>
 
@@ -515,6 +522,20 @@
             <input id="rain-mm" class="rain" min="0" max="50" step="1" type="range" value="0" disabled />
             <output id="rain-mm-display">off</output>
           </div>
+        </div>
+
+        <div class="group">
+          <h3>Soil</h3>
+          <label class="switch">
+            <input id="soil-toggle" type="checkbox" checked disabled />
+            <span class="track soil"></span>
+            <span class="switch-label">Ground absorbs water</span>
+          </label>
+          <div class="legend">
+            <span><i style="background: #d8bd7e"></i>Drains fast</span>
+            <span><i style="background: #8a5747"></i>Holds water</span>
+          </div>
+          <p class="hint" id="soil-status"></p>
         </div>
 
         <div class="group">
