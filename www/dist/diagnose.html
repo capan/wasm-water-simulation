@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Elevation decode self-check</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 46rem; }
+  pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+  .ok { color: #0a6; font-weight: 600; }
+  .bad { color: #b00020; font-weight: 600; }
+</style>
+<h1>Elevation decode self-check</h1>
+<p>
+  Terrarium tiles pack elevation as <code>R*256 + G + B/256 − 32768</code>, so a
+  one-step error in the red channel is a <strong>256 m</strong> error. This page
+  decodes the same tile two ways on <em>this</em> machine and compares them.
+</p>
+<pre id="out">running…</pre>
+<script type="module">
+import { terrariumToMeters } from "./elevation.mjs";
+
+const TILE = 256;
+const url = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/12/2393/1539.png";
+const out = document.getElementById("out");
+const lines = [];
+const say = (s) => { lines.push(s); out.innerHTML = lines.join("\n"); };
+
+try {
+  const bytes = await (await fetch(url)).arrayBuffer();
+
+  // Path A — ImageDecoder: raw pixels, no canvas, no colour management.
+  let viaDecoder = null;
+  if (typeof ImageDecoder === "function") {
+    const { image } = await new ImageDecoder({ data: bytes, type: "image/png", colorSpaceConversion: "none" }).decode();
+    const buf = new Uint8ClampedArray(image.allocationSize());
+    await image.copyTo(buf);
+    const bgr = image.format?.startsWith("BGR");
+    image.close();
+    if (bgr) for (let i = 0; i < buf.length; i += 4) [buf[i], buf[i + 2]] = [buf[i + 2], buf[i]];
+    viaDecoder = terrariumToMeters(buf);
+  }
+
+  // Path B — the old way: <img> + drawImage + getImageData.
+  const img = await new Promise((res, rej) => {
+    const i = new Image(); i.crossOrigin = "anonymous";
+    i.onload = () => res(i); i.onerror = () => rej(new Error("tile load failed")); i.src = url;
+  });
+  const c = document.createElement("canvas"); c.width = c.height = TILE;
+  const cx = c.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(img, 0, 0);
+  const viaCanvas = terrariumToMeters(cx.getImageData(0, 0, TILE, TILE).data);
+
+  const isolatedSpikes = (h) => {
+    let n = 0;
+    for (let y = 1; y < TILE - 1; y++) for (let x = 1; x < TILE - 1; x++) {
+      const i = y * TILE + x, m = h[i];
+      if ([h[i-1], h[i+1], h[i-TILE], h[i+TILE]].every((v) => m - v > 150)) n++;
+    }
+    return n;
+  };
+
+  say(`display        : ${devicePixelRatio}x DPR, colour gamut ${matchMedia("(color-gamut: p3)").matches ? "p3 (wide)" : "srgb"}`);
+  say(`ImageDecoder   : ${typeof ImageDecoder === "function" ? "available (used by the app)" : "MISSING — app falls back to canvas"}`);
+  say("");
+  say(`canvas path    : ${isolatedSpikes(viaCanvas)} isolated 256 m spikes`);
+  if (viaDecoder) {
+    say(`ImageDecoder   : ${isolatedSpikes(viaDecoder)} isolated 256 m spikes`);
+    let differing = 0, worst = 0;
+    for (let i = 0; i < viaDecoder.length; i++) {
+      const e = Math.abs(viaDecoder[i] - viaCanvas[i]);
+      if (e) { differing++; worst = Math.max(worst, e); }
+    }
+    say("");
+    say(`the two paths disagree on ${differing} of ${viaDecoder.length} pixels (worst ${worst} m)`);
+    say("");
+    say(differing
+      ? `<span class="bad">This machine corrupts the canvas decode — that was the speckle bug. The app now uses ImageDecoder, so it is fixed.</span>`
+      : `<span class="ok">Both paths agree here, so the canvas decode was not the cause on this machine.</span>`);
+  }
+} catch (e) {
+  say(`<span class="bad">failed: ${e.message}</span>`);
+}
+</script>
