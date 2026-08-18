@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Soil check</title>
+    <style>
+      :root { --bg:#0a0e14; --surface:#111823; --border:#26364b; --text:#e7eef8;
+              --muted:#8ea3bf; --accent:#38bdf8; --good:#34d399; --error:#fb7185;
+              --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+      * { box-sizing: border-box; }
+      body { margin:0; padding:1.5rem; background:var(--bg); color:var(--text);
+             font:14px/1.5 system-ui, sans-serif; }
+      h1 { font-size:1rem; margin:0 0 .25rem; }
+      p.sub { margin:0 0 1.25rem; color:var(--muted); font-size:.82rem; }
+      .row { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
+      button, input {
+        font:inherit; color:var(--text); background:#1e2b3d;
+        border:1px solid var(--border); border-radius:7px; padding:.4rem .7rem;
+      }
+      button { cursor:pointer; font-weight:600; }
+      button:hover { background:#26374d; }
+      button.go { background:linear-gradient(180deg,#38bdf8,#0ea5e9); color:#04212e; border-color:#0284c7; }
+      table { border-collapse:collapse; width:100%; max-width:900px; }
+      th, td { text-align:left; padding:.5rem .7rem; border-bottom:1px solid #1c2839; font-size:.85rem; }
+      th { color:var(--muted); font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; }
+      td.n { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+      .bar { height:7px; border-radius:3px; display:flex; overflow:hidden; min-width:130px; }
+      .bar i { display:block; height:100%; }
+      .err { color:var(--error); }
+      .ok { color:var(--good); }
+    </style>
+  </head>
+  <body>
+    <h1>Soil check</h1>
+    <p class="sub">
+      Reads SoilGrids texture for an area the same way the simulation will.
+      Nothing here touches the simulation — this is the data layer on its own.
+    </p>
+
+    <div class="row">
+      <input id="lat" size="8" value="40.75" /> <input id="lon" size="8" value="30.40" />
+      <button class="go" id="go">Look up</button>
+      <button data-at="40.75,30.40">Sakarya</button>
+      <button data-at="25.00,10.00">Sahara</button>
+      <button data-at="52.52,13.40">Berlin</button>
+      <button data-at="29.98,31.13">Giza</button>
+      <button data-at="30.00,-40.00">Mid-Atlantic</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Where</th><th>Coverage</th><th>Sand</th><th>Silt</th><th>Clay</th><th>Mix</th><th>Texture</th><th>Group</th><th>Soaks up</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <script type="module">
+      import { planGrid } from "./tiles.mjs";
+      import { fetchSoil, isCovered, textureClass, hydrologicGroup, infiltrationGrid, UNKNOWN } from "./soil.mjs";
+
+      const $ = (id) => document.getElementById(id);
+      const rows = $("rows");
+
+      async function look(lat, lon) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${lat.toFixed(2)}, ${lon.toFixed(2)}</td><td colspan="6">loading…</td>`;
+        rows.prepend(tr);
+        try {
+          const grid = planGrid({ north: lat + 0.05, south: lat - 0.05, east: lon + 0.05, west: lon - 0.05 });
+          const { sand, silt, clay, valid } = await fetchSoil(grid);
+          const mean = (a) => {
+            let s = 0, n = 0;
+            for (let i = 0; i < a.length; i++) {
+              if (isCovered(sand[i], silt[i], clay[i])) { s += a[i]; n++; }
+            }
+            return n ? s / n / 10 : NaN;
+          };
+          const [sa, si, cl] = [mean(sand), mean(silt), mean(clay)];
+          const pct = (v) => (Number.isNaN(v) ? "–" : v.toFixed(1) + "%");
+
+          // Dominant texture across the covered cells, and the mean capacity.
+          const tally = new Map();
+          const { rates } = infiltrationGrid({ sand, silt, clay });
+          let sum = 0, n = 0;
+          for (let i = 0; i < sand.length; i++) {
+            if (rates[i] === UNKNOWN) continue;
+            const total = sand[i] + silt[i] + clay[i];
+            const t = textureClass(sand[i] / total * 100, silt[i] / total * 100, clay[i] / total * 100);
+            tally.set(t, (tally.get(t) ?? 0) + 1);
+            sum += rates[i]; n++;
+          }
+          const top = [...tally].sort((a, b) => b[1] - a[1])[0];
+          const texture = top ? top[0] : null;
+          const share = top ? Math.round((top[1] / n) * 100) : 0;
+          tr.innerHTML =
+            `<td>${lat.toFixed(2)}, ${lon.toFixed(2)}</td>` +
+            `<td class="n ${valid > 0 ? "ok" : "err"}">${(valid * 100).toFixed(0)}%</td>` +
+            `<td class="n">${pct(sa)}</td><td class="n">${pct(si)}</td><td class="n">${pct(cl)}</td>` +
+            (Number.isNaN(sa)
+              ? `<td class="err" colspan="4">no survey data here — infiltration unknown</td>`
+              : `<td><span class="bar">
+                   <i style="width:${sa}%;background:#d9a441"></i>
+                   <i style="width:${si}%;background:#7c9c6a"></i>
+                   <i style="width:${cl}%;background:#b2673f"></i>
+                 </span></td>` +
+                `<td>${texture} <span style="color:var(--muted)">${share}%</span></td>` +
+                `<td class="n">${hydrologicGroup(texture)}</td>` +
+                `<td class="n">${(sum / n).toFixed(1)} mm/h</td>`);
+        } catch (e) {
+          tr.innerHTML = `<td>${lat.toFixed(2)}, ${lon.toFixed(2)}</td><td colspan="6" class="err">${e.message}</td>`;
+        }
+      }
+
+      $("go").addEventListener("click", () => look(Number($("lat").value), Number($("lon").value)));
+      for (const b of document.querySelectorAll("button[data-at]")) {
+        b.addEventListener("click", () => {
+          const [la, lo] = b.dataset.at.split(",").map(Number);
+          $("lat").value = la; $("lon").value = lo;
+          look(la, lo);
+        });
+      }
+      look(40.75, 30.40); // Sakarya, so the page shows something on open
+    </script>
+  </body>
+</html>
