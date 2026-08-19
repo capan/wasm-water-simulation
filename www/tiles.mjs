@@ -3,7 +3,7 @@
 export const TILE = 256;
 
 export const ZOOM = 12;      // ~30 m/px at mid-latitudes, matches SRTM
-export const MAX_GRID = 512; // cells per side the simulation will accept
+export const MAX_GRID = 600;  // cells per side the simulation will accept
 
 const scale = (z) => TILE * 2 ** z;
 
@@ -21,11 +21,8 @@ const pyToLat = (py, z) =>
  * @param {{north:number,south:number,east:number,west:number}} bbox
  * @returns {{z, x0, y0, width, height, tiles: {z,x,y,px,py}[]}} x0/y0 are global pixel coords
  */
-export function planGrid({ north, south, east, west }, z = ZOOM) {
-  const x0 = Math.floor(lonToPx(west, z));
-  const y0 = Math.floor(latToPy(north, z));
-  const width = Math.max(1, Math.ceil(lonToPx(east, z)) - x0);
-  const height = Math.max(1, Math.ceil(latToPy(south, z)) - y0);
+export function planGrid(bbox, z = ZOOM) {
+  const { x0, y0, width, height } = gridSize(bbox, z);
 
   if (width > MAX_GRID || height > MAX_GRID) {
     throw new Error(
@@ -34,6 +31,40 @@ export function planGrid({ north, south, east, west }, z = ZOOM) {
   }
 
   return { z, x0, y0, width, height, tiles: tilesFor({ z, x0, y0, width, height }) };
+}
+
+/**
+ * The pixel window a bbox resolves to, without enumerating its tiles — cheap
+ * enough to call while the pointer is moving.
+ */
+export function gridSize({ north, south, east, west }, z = ZOOM) {
+  const x0 = Math.floor(lonToPx(west, z));
+  const y0 = Math.floor(latToPy(north, z));
+  return {
+    x0,
+    y0,
+    width: Math.max(1, Math.ceil(lonToPx(east, z)) - x0),
+    height: Math.max(1, Math.ceil(latToPy(south, z)) - y0),
+  };
+}
+
+/**
+ * Pull `corner` back towards `anchor` until the box between them is within the
+ * grid limit, so a selection cannot be dragged past what the simulation accepts.
+ * Each axis is clamped on its own, so running out of room sideways does not stop
+ * the box growing downwards.
+ *
+ * The span is held one pixel under `MAX_GRID`: `gridSize` floors the near edge
+ * and ceils the far one, which can add a cell, and a selection that reported
+ * exactly the limit while dragging must not be rejected on release.
+ */
+export function clampCorner(anchor, corner, z = ZOOM) {
+  const limit = MAX_GRID - 1;
+  const clamp = (from, to) => Math.max(from - limit, Math.min(from + limit, to));
+  return {
+    lat: pyToLat(clamp(latToPy(anchor.lat, z), latToPy(corner.lat, z)), z),
+    lon: pxToLon(clamp(lonToPx(anchor.lon, z), lonToPx(corner.lon, z)), z),
+  };
 }
 
 /** Every tile covering a pixel window. `px`/`py` are the tile's unwrapped origin. */
@@ -61,6 +92,16 @@ export const latLonToCell = ({ z, x0, y0 }, lat, lon) => ({
   col: lonToPx(lon, z) - x0,
   row: latToPy(lat, z) - y0,
 });
+
+/**
+ * Ground size of one cell, in metres. Web Mercator pixels shrink away from the
+ * equator by cos(latitude), so this is taken at the grid's own centre — good
+ * enough for slope, which only needs the ratio of height to distance.
+ */
+export function metresPerCell({ z, x0, y0, width, height }) {
+  const lat = pyToLat(y0 + height / 2, z);
+  return ((2 * Math.PI * 6378137) / scale(z)) * Math.cos((lat * Math.PI) / 180);
+}
 
 /** The bbox actually covered by a grid — pixel rounding makes it differ from the request. */
 export const gridBounds = ({ z, x0, y0, width, height }) => ({
