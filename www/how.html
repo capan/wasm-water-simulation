@@ -109,6 +109,8 @@
              background: var(--accent); color: #04121f; text-decoration: none; font-weight: 600; }
       footer { margin-top: 2.2rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
                font-size: 0.84rem; color: var(--dim); }
+      ul.sources { font-size: 0.84rem; color: var(--dim); padding-left: 1.1rem; margin: 0.8rem 0; }
+      ul.sources li { margin: 0.3rem 0; }
     </style>
   </head>
   <body>
@@ -277,12 +279,45 @@
         </ul>
       </div>
 
+      <h2 id="attribution"><span class="n">5</span>Attribution</h2>
+      <p>
+        The terrain is not one survey but a mosaic of many, merged into
+        <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Terrain Tiles</a>
+        and hosted on the AWS Registry of Open Data. Its
+        <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">licence</a>
+        asks that every one of them is credited, so:
+      </p>
+      <ul class="sources">
+        <li>ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded
+          under National Science Foundation awards 1043681, 1559691, and 1542736</li>
+        <li>Australia terrain data © Commonwealth of Australia (Geoscience Australia) 2017</li>
+        <li>Austria terrain data © offene Daten Österreichs – Digitales Geländemodell (DGM) Österreich</li>
+        <li>Canada terrain data contains information licensed under the Open Government Licence – Canada</li>
+        <li>Europe terrain data produced using Copernicus data and information funded by the
+          European Union - EU-DEM layers</li>
+        <li>Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration</li>
+        <li>Mexico terrain data source: INEGI, Continental relief, 2016</li>
+        <li>New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand
+          and the New Zealand Government (All rights reserved)</li>
+        <li>Norway terrain data © Kartverket</li>
+        <li>United Kingdom terrain data © Environment Agency copyright and/or database right 2015.
+          All rights reserved</li>
+        <li>United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of
+          the U.S. Geological Survey</li>
+      </ul>
+      <p class="muted">
+        Rain from <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>.
+        Soil from <a href="https://soilgrids.org/" target="_blank" rel="noopener">ISRIC SoilGrids</a>,
+        CC BY 4.0. Place search from <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a>,
+        over OpenStreetMap. Basemap © OpenStreetMap contributors, © CARTO.
+      </p>
+
       <a class="cta" href="/">← Open the map</a>
 
       <footer>
         Source on <a href="https://github.com/capan/wasm-water-simulation" target="_blank" rel="noopener">GitHub</a>.
-        Elevation © Mapzen and contributors · radar © RainViewer · soil © ISRIC SoilGrids ·
-        basemap © OpenStreetMap contributors, © CARTO.
+        Terrain Tiles is part of the
+        <a href="https://registry.opendata.aws/" target="_blank" rel="noopener">AWS Registry of Open Data</a>.
       </footer>
     </div>
 

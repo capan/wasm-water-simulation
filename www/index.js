@@ -409,8 +409,10 @@ tickRange.dispatchEvent(new Event("input"));
 const map = L.map("map", { zoomSnap: 0 }).setView([40.75, 30.4], ZOOM);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
+  // The elevation licence wants its eleven national surveys credited; the full
+  // list lives on /how, which is the reasonable place for it in this medium.
   attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> | <a href="/how#attribution">Data sources</a>',
 }).addTo(map);
 
 let firstCorner = null;
