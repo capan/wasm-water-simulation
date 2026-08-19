@@ -218,6 +218,27 @@
       /* The status box sits below the search rather than under it. */
       .status { top: 62px; }
 
+      /* Top-right is the only corner nothing else claims: Leaflet's zoom sits
+         top-left, the search above it, and the dock along the bottom. */
+      .how {
+        position: fixed;
+        right: 14px;
+        top: 14px;
+        z-index: 1000;
+        padding: 6px 11px;
+        font-size: 0.84rem;
+        color: var(--dim);
+        text-decoration: none;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        backdrop-filter: blur(14px);
+      }
+      .how:hover,
+      .how:focus-visible {
+        color: var(--ink);
+      }
+
       /* Follows the pointer over the simulated area; placed from script. */
       .readout {
         position: fixed;
@@ -239,6 +260,8 @@
   </head>
   <body>
     <div id="map"></div>
+
+    <a class="how" href="/how">How it works</a>
 
     <div class="search">
       <input id="place-search" type="search" autocomplete="off" spellcheck="false"

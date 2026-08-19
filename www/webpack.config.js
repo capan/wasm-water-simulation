@@ -19,6 +19,7 @@ module.exports = {
   plugins: [
     new CopyWebpackPlugin([
       { from: "index.html", to: "index.html" },
+      { from: "how.html", to: "how.html" },
       // these pages load the modules natively, no bundling involved
       { from: "diagnose.html", to: "diagnose.html" },
       { from: "soilcheck.html", to: "soilcheck.html" },

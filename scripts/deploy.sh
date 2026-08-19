@@ -71,7 +71,7 @@ echo "==> rebuilding"
 ssh "$SERVER" "cd $APP_DIR && docker compose up -d --build"
 
 echo "==> smoke test"
-for path in / /bootstrap.js /tiles.mjs; do
+for path in / /how /bootstrap.js /tiles.mjs; do
   code=$(curl -sS -o /dev/null -w '%{http_code}' --retry 5 --retry-delay 2 --retry-all-errors "$URL$path")
   [ "$code" = 200 ] || { echo "FAIL $path -> $code" >&2; exit 1; }
   echo "  $path $code"

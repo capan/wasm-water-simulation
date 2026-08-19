@@ -46,6 +46,10 @@ const OVERLAY_MS = 80;
 // and the position range is wider than the pixel width, for keyboard steps.
 const MANUAL_MAX_MM = 1000;
 const manualRateFor = (position) => ((position / 200) ** 2) * MANUAL_MAX_MM;
+// The square curve lands on values like 864.9000000000001, so every place that
+// shows a rate goes through here. One decimal while the numbers are small
+// enough for it to matter, whole millimetres above that.
+const formatRate = (mm) => (mm < 10 ? mm.toFixed(1) : String(Math.round(mm)));
 // One replay step per this long. The tiles are HTTP-cached after the first
 // lap, so a second pass round the loop costs nothing.
 const REPLAY_STEP_MS = 900;
@@ -638,7 +642,7 @@ async function showFrame(index) {
 function applyManualRain() {
   if (!sim) return;
   applyRain(new Float32Array(sim.width * sim.height).fill(manualRate), null, 1);
-  setRainStatus(`Manual rain: ${manualRate} mm/h everywhere.`);
+  setRainStatus(`Manual rain: ${formatRate(manualRate)} mm/h everywhere.`);
 }
 
 // Elevation is what the user waited for, so radar is fetched after the terrain
@@ -721,10 +725,7 @@ $("frame-range").addEventListener("input", (event) => {
 const rainMm = $("rain-mm");
 rainMm.addEventListener("input", () => {
   manualRate = manualRateFor(Number(rainMm.value));
-  // One decimal while the numbers are small enough for it to matter.
-  $("rain-mm-display").textContent = !manualRate
-    ? "off"
-    : `${manualRate < 10 ? manualRate.toFixed(1) : Math.round(manualRate)} mm/h`;
+  $("rain-mm-display").textContent = !manualRate ? "off" : `${formatRate(manualRate)} mm/h`;
   if (manualRate) applyManualRain();
   else showFrame(frameIndex); // zero hands the grid back to the radar
 });

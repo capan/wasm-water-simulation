@@ -4,6 +4,8 @@
 # reason it is here rather than nginx.
 :80 {
 	root * /srv
+	# /how rather than /how.html, matching the sibling services.
+	try_files {path} {path}.html
 	file_server
 	encode zstd gzip
 }
