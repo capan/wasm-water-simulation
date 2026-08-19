@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>How it works | Water Simulation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="How the water simulation turns map tiles into terrain, radar into rainfall and a soil survey into runoff." />
+    <style>
+      :root {
+        --bg: #080b10;
+        --card: #12161c;
+        --ink: #e8edf3;
+        --dim: #9aa7b6;
+        --line: rgba(255, 255, 255, 0.12);
+        --accent: #29a3ff;
+        --warn: #f0a24a;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        line-height: 1.62;
+        color: var(--ink);
+        background: var(--bg);
+        background-image: radial-gradient(900px 420px at 50% -160px, #16222f, transparent);
+      }
+      .wrap {
+        max-width: 740px;
+        margin: 2.5rem auto 4rem;
+        padding: 2.6rem 3rem 3rem;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+      }
+      @media (max-width: 680px) {
+        .wrap { margin: 0; padding: 1.7rem 1.2rem 2.4rem; border-radius: 0; border-left: 0; border-right: 0; }
+      }
+      a { color: var(--accent); }
+      .top { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.8rem; }
+      .logo {
+        width: 40px; height: 40px; display: grid; place-items: center;
+        font-size: 1.25rem; border-radius: 11px;
+        background: linear-gradient(150deg, #1d6fb0, #0d3552);
+        border: 1px solid var(--line);
+      }
+      .top h1 { font-size: 1.12rem; margin: 0; letter-spacing: -0.01em; }
+      .top .tag { font-size: 0.74rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+      .lead { font-size: 1.12rem; margin: 0 0 1.6rem; }
+      h2 { font-size: 1rem; margin: 2.4rem 0 0.5rem; letter-spacing: -0.01em; }
+      h2 .n {
+        display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem;
+        margin-right: 0.5rem; font-size: 0.78rem; border-radius: 50%;
+        background: var(--accent); color: #04121f; font-weight: 700; vertical-align: middle;
+      }
+      p { margin: 0.55rem 0; }
+      .muted { color: var(--dim); }
+      code { font-family: var(--mono); font-size: 0.88em; background: rgba(255,255,255,0.06);
+             border: 1px solid var(--line); border-radius: 4px; padding: 0.05rem 0.35rem; }
+      .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 1.2rem 0 0.4rem; }
+      .card { border: 1px solid var(--line); border-radius: 10px; padding: 0.85rem 1rem;
+              background: rgba(255,255,255,0.03); }
+      .card h3 { margin: 0 0 0.25rem; font-size: 0.9rem; }
+      .card .meta { font-size: 0.8rem; color: var(--dim); margin: 0; }
+      @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+
+      .formula { font-family: var(--mono); font-size: 0.94rem; text-align: center;
+                 border: 1px solid var(--line); border-radius: 10px; padding: 0.9rem 0.7rem;
+                 background: rgba(255,255,255,0.03); margin: 1.1rem 0; overflow-x: auto; }
+      .formula b { color: var(--accent); font-weight: 600; }
+
+      .steps { list-style: none; padding: 0; margin: 1.1rem 0; }
+      .steps li { padding: 0.65rem 0 0.65rem 2rem; border-top: 1px solid var(--line); position: relative; }
+      .steps li:last-child { border-bottom: 1px solid var(--line); }
+      .steps b { color: var(--accent); font-weight: 600; }
+      .steps li::before {
+        content: attr(data-n); position: absolute; left: 0; top: 0.72rem;
+        width: 1.35rem; height: 1.35rem; display: grid; place-items: center;
+        font-size: 0.72rem; font-weight: 700; border-radius: 50%;
+        background: rgba(41,163,255,0.16); color: var(--accent);
+      }
+
+      table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+      th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); }
+      th { color: var(--dim); font-weight: 600; font-size: 0.78rem;
+           text-transform: uppercase; letter-spacing: 0.05em; }
+      td.n { font-family: var(--mono); white-space: nowrap; }
+
+      figure.anim { margin: 1.2rem 0 1.4rem; border: 1px solid var(--line); border-radius: 12px;
+                    padding: 0.9rem 0.9rem 0.7rem; background: rgba(255,255,255,0.03); text-align: center; }
+      figure.anim canvas { width: 100%; max-width: 560px; height: auto; display: block;
+                           margin: 0 auto; border-radius: 6px; }
+      figure.anim .cap { margin-top: 0.6rem; font-size: 0.9rem; font-weight: 600; min-height: 2.6em; }
+      figure.anim .cap span { display: block; font-weight: 400; color: var(--dim); font-size: 0.85rem; }
+      .dots { display: flex; gap: 0.4rem; justify-content: center; margin-top: 0.5rem; }
+      .dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.2);
+                   transition: 0.25s; }
+      .dots span.on { background: var(--accent); transform: scale(1.25); }
+
+      .caveats { border: 1px solid rgba(240,162,74,0.35); background: rgba(240,162,74,0.07);
+                 border-radius: 10px; padding: 0.9rem 1.2rem; }
+      .caveats ul { margin: 0; padding-left: 1.1rem; }
+      .caveats li { margin: 0.4rem 0; }
+      .caveats b { color: var(--warn); }
+
+      .cta { display: inline-block; margin-top: 2rem; padding: 0.6rem 1.1rem; border-radius: 8px;
+             background: var(--accent); color: #04121f; text-decoration: none; font-weight: 600; }
+      footer { margin-top: 2.2rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+               font-size: 0.84rem; color: var(--dim); }
+      ul.sources { font-size: 0.84rem; color: var(--dim); padding-left: 1.1rem; margin: 0.8rem 0; }
+      ul.sources li { margin: 0.3rem 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <span class="logo">💧</span>
+        <div>
+          <h1>Water Simulation</h1>
+          <span class="tag">How it works</span>
+        </div>
+      </div>
+
+      <p class="lead">
+        Pick a rectangle anywhere on Earth and watch water run down the real
+        ground under it, in the rain that is actually falling there right now.
+      </p>
+
+      <p>
+        Nothing is precomputed and there is no server doing the work. The browser
+        pulls four open datasets for the rectangle you drew, decodes them itself,
+        and hands a plain grid of heights to a small piece of Rust compiled to
+        WebAssembly. No API keys, no accounts, no rate limits.
+      </p>
+
+      <div class="cards">
+        <div class="card">
+          <h3>⛰️ How high is it?</h3>
+          <p class="meta">
+            <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a>,
+            terrarium PNGs at zoom 12 — about 30 m per pixel at mid-latitudes.
+          </p>
+        </div>
+        <div class="card">
+          <h3>🌧️ Is it raining?</h3>
+          <p class="meta">
+            <a href="https://www.rainviewer.com/api.html" target="_blank" rel="noopener">RainViewer</a>
+            radar mosaic, a new frame roughly every 10 minutes, two hours of
+            history to scrub through.
+          </p>
+        </div>
+        <div class="card">
+          <h3>🌱 Where does it soak in?</h3>
+          <p class="meta">
+            <a href="https://soilgrids.org/" target="_blank" rel="noopener">ISRIC SoilGrids</a>
+            sand, silt and clay at 250 m, turned into an infiltration rate.
+          </p>
+        </div>
+        <div class="card">
+          <h3>🔎 Where am I?</h3>
+          <p class="meta">
+            <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a>
+            resolves a place name to a view. The basemap is CARTO over
+            OpenStreetMap.
+          </p>
+        </div>
+      </div>
+
+      <h2><span class="n">1</span>The tiles are data, not pictures</h2>
+      <p>
+        Elevation arrives as PNG images, but they are not images of anything. The
+        terrarium encoding packs one height in metres into each pixel's three
+        colour channels:
+      </p>
+
+      <div class="formula">
+        meters = <b>R</b>&nbsp;×&nbsp;256 &nbsp;+&nbsp; <b>G</b> &nbsp;+&nbsp; <b>B</b>&nbsp;÷&nbsp;256 &nbsp;−&nbsp; 32768
+      </div>
+
+      <p>
+        Which means one step in the red channel is <b>256 metres</b>. That single
+        fact decides how the whole geodata stack is built. Draw one of these tiles
+        to a canvas and read it back — the obvious way to get pixels in a browser —
+        and colour management is free to nudge a channel by one on the way through.
+        Nobody would notice on a photograph. Here it moves a hillside a quarter of
+        a kilometre into the sky.
+      </p>
+      <p>
+        So every tile is decoded with <code>ImageDecoder</code> straight to raw
+        bytes, and never through a canvas. The soil layer needs deflate, which
+        <code>DecompressionStream</code> handles. Both are browser built-ins, which
+        is why the whole geodata stack has no dependencies at all.
+      </p>
+
+      <h2><span class="n">2</span>Where the water goes</h2>
+      <p>
+        This is the only part written in Rust, and it is deliberately the only part.
+        It receives a grid of integer heights and knows nothing about maps,
+        projections, tiles or file formats — every attempt to teach it about
+        geodata has been deleted again.
+      </p>
+
+      <figure class="anim" aria-label="Animation of a droplet choosing the steepest downhill neighbour, and of many droplets forming drainage lines">
+        <canvas id="flow" width="560" height="340"></canvas>
+        <figcaption class="cap" id="flowCap"></figcaption>
+        <div class="dots" id="flowDots"><span></span><span></span><span></span><span></span></div>
+      </figure>
+
+      <ol class="steps">
+        <li data-n="1"><b>Every cell holds one height.</b> About 30 m across, as an
+          integer number of metres, which is all the precision the source has.</li>
+        <li data-n="2"><b>A droplet compares its eight neighbours.</b> It scores each
+          by how far down it is, and takes the largest drop.</li>
+        <li data-n="3"><b>If nothing is lower, it stays put</b> and soaks in where it
+          is. That is what fills the hollows.</li>
+        <li data-n="4"><b>Repeat for thousands of droplets</b> and the valleys draw
+          themselves. Nothing in the code knows what a river is; the channels are
+          just where the paths keep overlapping.</li>
+      </ol>
+
+      <p class="muted">
+        Each droplet moves one cell per tick and leaves a trail that fades. A route
+        every droplet crosses settles bright; ground crossed once in twenty ticks
+        stays dim. That separation is the picture.
+      </p>
+
+      <h2><span class="n">3</span>Only the rain the ground cannot take</h2>
+      <p>
+        Radar gives reflectivity in dBZ, which becomes a rainfall rate through the
+        standard Marshall-Palmer relation, capped at 65 dBZ because above that it
+        is hail rather than rain. That is the easy half.
+      </p>
+      <p>
+        The interesting half is that rain falling on ground that can absorb it does
+        not run anywhere. So the soil fractions are put through the USDA texture
+        triangle, into the NRCS hydrologic soil groups, into a saturated
+        infiltration capacity:
+      </p>
+
+      <table>
+        <thead>
+          <tr><th>Group</th><th>Texture</th><th>Soaks up</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">A</td><td>sand, loamy sand, sandy loam</td><td class="n">10.0 mm/h</td></tr>
+          <tr><td class="n">B</td><td>loam, silt loam, silt</td><td class="n">5.5 mm/h</td></tr>
+          <tr><td class="n">C</td><td>sandy clay loam</td><td class="n">2.5 mm/h</td></tr>
+          <tr><td class="n">D</td><td>the clays</td><td class="n">1.0 mm/h</td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        A cell then spawns droplets on <code>rate − capacity</code>, not on
+        <code>rate</code>. Light rain on sand produces nothing at all; the same rain
+        on clay produces streams. And once a droplet exists, the ground underneath
+        keeps taking its rate out of it every tick, so a droplet crossing
+        free-draining soil dies sooner than one on clay. The same number does both
+        jobs.
+      </p>
+
+      <h2><span class="n">4</span>What this is, and isn't</h2>
+      <div class="caveats">
+        <ul>
+          <li><b>It is a picture, not a forecast.</b> Droplets are indicative, not a
+            volume of water. Nothing here predicts a flood.</li>
+          <li><b>Infiltration is the saturated rate, held constant.</b> Real ground
+            takes water fast when dry and slows as it wets. Modelling that needs
+            per-cell moisture carried across ticks, which this does not do, so it
+            biases towards runoff.</li>
+          <li><b>Soil coverage collapses in towns.</b> The survey has no reading
+            under pavement — about 5% of cells in a built-up area. There the flat
+            fallback rate is not an edge case, it is the behaviour.</li>
+          <li><b>Water moves one cell per tick, always downhill.</b> No velocity, no
+            volume, no channel routing, and puddles never overflow.</li>
+          <li><b>Resolution is the source's.</b> 30 m cells for terrain, 250 m for
+            soil, and a radar mosaic that is coarser still.</li>
+        </ul>
+      </div>
+
+      <h2 id="attribution"><span class="n">5</span>Attribution</h2>
+      <p>
+        The terrain is not one survey but a mosaic of many, merged into
+        <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">Terrain Tiles</a>
+        and hosted on the AWS Registry of Open Data. Its
+        <a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">licence</a>
+        asks that every one of them is credited, so:
+      </p>
+      <ul class="sources">
+        <li>ArcticDEM terrain data DEM(s) were created from DigitalGlobe, Inc., imagery and funded
+          under National Science Foundation awards 1043681, 1559691, and 1542736</li>
+        <li>Australia terrain data © Commonwealth of Australia (Geoscience Australia) 2017</li>
+        <li>Austria terrain data © offene Daten Österreichs – Digitales Geländemodell (DGM) Österreich</li>
+        <li>Canada terrain data contains information licensed under the Open Government Licence – Canada</li>
+        <li>Europe terrain data produced using Copernicus data and information funded by the
+          European Union - EU-DEM layers</li>
+        <li>Global ETOPO1 terrain data U.S. National Oceanic and Atmospheric Administration</li>
+        <li>Mexico terrain data source: INEGI, Continental relief, 2016</li>
+        <li>New Zealand terrain data Copyright 2011 Crown copyright (c) Land Information New Zealand
+          and the New Zealand Government (All rights reserved)</li>
+        <li>Norway terrain data © Kartverket</li>
+        <li>United Kingdom terrain data © Environment Agency copyright and/or database right 2015.
+          All rights reserved</li>
+        <li>United States 3DEP (formerly NED) and global GMTED2010 and SRTM terrain data courtesy of
+          the U.S. Geological Survey</li>
+      </ul>
+      <p class="muted">
+        Rain from <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>.
+        Soil from <a href="https://soilgrids.org/" target="_blank" rel="noopener">ISRIC SoilGrids</a>,
+        CC BY 4.0. Place search from <a href="https://photon.komoot.io/" target="_blank" rel="noopener">Photon</a>,
+        over OpenStreetMap. Basemap © OpenStreetMap contributors, © CARTO.
+      </p>
+
+      <a class="cta" href="/">← Open the map</a>
+
+      <footer>
+        Source on <a href="https://github.com/capan/wasm-water-simulation" target="_blank" rel="noopener">GitHub</a>.
+        Terrain Tiles is part of the
+        <a href="https://registry.opendata.aws/" target="_blank" rel="noopener">AWS Registry of Open Data</a>.
+      </footer>
+    </div>
+
+    <script>
+      (function () {
+        const cv = document.getElementById("flow");
+        const cap = document.getElementById("flowCap");
+        const dots = [...document.getElementById("flowDots").children];
+        const ctx = cv.getContext("2d");
+
+        // Drawn in fixed logical units and scaled by devicePixelRatio, so the
+        // cell edges stay crisp on a Retina display.
+        const W = 560, H = 340;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        cv.width = W * dpr; cv.height = H * dpr;
+        ctx.scale(dpr, dpr);
+
+        const COLS = 56, ROWS = 34, CW = W / COLS, CH = H / ROWS;
+
+        // A toy landscape: a general fall to the south with ridges across it, so
+        // the eight-neighbour rule has somewhere to converge. Integers, because
+        // the real cells are integer metres too.
+        const height = [];
+        for (let y = 0; y < ROWS; y++) {
+          height[y] = [];
+          for (let x = 0; x < COLS; x++) {
+            const u = x / COLS, v = y / ROWS;
+            height[y][x] = Math.round(
+              120 - 74 * v +
+              26 * Math.sin(u * Math.PI * 2.4 + 0.6) * (1 - 0.5 * v) +
+              8 * Math.cos(u * Math.PI * 5.1 + v * 3.2) +
+              5 * Math.sin(v * Math.PI * 3.3)
+            );
+          }
+        }
+        let lo = Infinity, hi = -Infinity;
+        for (const row of height) for (const h of row) { if (h < lo) lo = h; if (h > hi) hi = h; }
+
+        // The app's hypsometric ramp, so the diagram and the map agree.
+        const RELIEF = [
+          [0.0, 74, 108, 74], [0.18, 108, 138, 78], [0.38, 158, 162, 96],
+          [0.58, 186, 154, 102], [0.78, 150, 112, 82], [1.0, 238, 236, 232],
+        ];
+        function relief(t) {
+          let i = 1;
+          while (i < RELIEF.length - 1 && t > RELIEF[i][0]) i++;
+          const [t0, r0, g0, b0] = RELIEF[i - 1], [t1, r1, g1, b1] = RELIEF[i];
+          const k = (t - t0) / (t1 - t0);
+          return [r0 + (r1 - r0) * k, g0 + (g1 - g0) * k, b0 + (b1 - b0) * k];
+        }
+
+        // Terrain never changes, so shade it once at a pixel per cell and blit it
+        // scaled — the same trick the app uses on the real grid.
+        const terrain = document.createElement("canvas");
+        terrain.width = COLS; terrain.height = ROWS;
+        {
+          const tctx = terrain.getContext("2d");
+          const img = tctx.createImageData(COLS, ROWS);
+          const at = (x, y) => height[Math.min(ROWS - 1, Math.max(0, y))][Math.min(COLS - 1, Math.max(0, x))];
+          for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+              const dzdx = (at(x + 1, y) - at(x - 1, y)) / 2;
+              const dzdy = (at(x, y + 1) - at(x, y - 1)) / 2;
+              const slope = Math.atan(Math.hypot(dzdx, dzdy) * 0.4);
+              const aspect = Math.atan2(dzdy, -dzdx);
+              // Lit from the north-west, the direction the eye reads as hills
+              // rather than craters.
+              const lit = Math.cos(Math.PI / 4) * Math.cos(slope) +
+                          Math.sin(Math.PI / 4) * Math.sin(slope) * Math.cos((315 * Math.PI) / 180 - aspect);
+              const shade = 0.55 + 0.75 * Math.max(0, lit);
+              const [r, g, b] = relief((height[y][x] - lo) / (hi - lo));
+              const p = (y * COLS + x) * 4;
+              img.data[p] = Math.min(255, r * shade);
+              img.data[p + 1] = Math.min(255, g * shade);
+              img.data[p + 2] = Math.min(255, b * shade);
+              img.data[p + 3] = 255;
+            }
+          }
+          tctx.putImageData(img, 0, 0);
+        }
+
+        const N8 = [[0,-1],[-1,-1],[-1,0],[-1,1],[0,1],[1,1],[1,0],[1,-1]].map(([dr, dc]) => ({ dr, dc }));
+
+        /** Steepest-descent neighbour, or null when nothing around is lower. */
+        function downhill(r, c) {
+          let best = null, drop = 0;
+          for (const { dr, dc } of N8) {
+            const nr = r + dr, nc = c + dc;
+            if (nr < 0 || nc < 0 || nr >= ROWS || nc >= COLS) continue;
+            const d = height[r][c] - height[nr][nc];
+            if (d > drop) { drop = d; best = { r: nr, c: nc }; }
+          }
+          return best;
+        }
+
+        const WATER = "#29a3ff";
+        const drawTerrain = () => {
+          ctx.clearRect(0, 0, W, H);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(terrain, 0, 0, W, H);
+        };
+        const cellRect = (r, c) => [c * CW, r * CH, CW, CH];
+        const fillCell = (r, c, col, a = 1) => {
+          ctx.globalAlpha = a; ctx.fillStyle = col;
+          ctx.fillRect(...cellRect(r, c)); ctx.globalAlpha = 1;
+        };
+        const ringCell = (r, c, col, w = 2) => {
+          ctx.strokeStyle = col; ctx.lineWidth = w;
+          ctx.strokeRect(c * CW - 0.5, r * CH - 0.5, CW + 1, CH + 1);
+        };
+
+        // ---- phase 1: one droplet scoring its eight neighbours, magnified
+        const PICK = { r: 9, c: 15 };
+        function drawInspect(t) {
+          drawTerrain();
+          ringCell(PICK.r, PICK.c, "#fff", 2);
+
+          const S = 44, ox = W - 3 * S - 18, oy = 18;
+          ctx.globalAlpha = 0.9; ctx.fillStyle = "rgba(8,11,16,0.86)";
+          ctx.fillRect(ox - 10, oy - 10, 3 * S + 20, 3 * S + 20);
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1;
+          ctx.strokeRect(ox - 10, oy - 10, 3 * S + 20, 3 * S + 20);
+
+          const here = height[PICK.r][PICK.c];
+          const steepest = downhill(PICK.r, PICK.c);
+          // Reveal the eight scores one at a time, then the winner.
+          const shown = Math.min(8, Math.floor(t * 11));
+          let n = 0;
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const x = ox + (dc + 1) * S, y = oy + (dr + 1) * S;
+              const h = height[PICK.r + dr][PICK.c + dc];
+              const centre = dr === 0 && dc === 0;
+              const win = steepest && PICK.r + dr === steepest.r && PICK.c + dc === steepest.c;
+              const revealed = centre || n < shown;
+              if (!centre) n++;
+
+              ctx.fillStyle = centre ? "rgba(41,163,255,0.30)"
+                : win && t > 0.78 ? "rgba(41,163,255,0.22)" : "rgba(255,255,255,0.05)";
+              ctx.fillRect(x + 2, y + 2, S - 4, S - 4);
+              ctx.strokeStyle = win && t > 0.78 ? WATER : "rgba(255,255,255,0.16)";
+              ctx.lineWidth = win && t > 0.78 ? 2 : 1;
+              ctx.strokeRect(x + 2, y + 2, S - 4, S - 4);
+
+              ctx.textAlign = "center"; ctx.textBaseline = "middle";
+              ctx.fillStyle = "#e8edf3";
+              ctx.font = "600 13px ui-monospace, Menlo, monospace";
+              ctx.fillText(String(h), x + S / 2, y + S / 2 - 6);
+              if (!centre && revealed) {
+                const d = here - h;
+                ctx.fillStyle = d > 0 ? "#7fd18a" : "#9aa7b6";
+                ctx.font = "11px ui-monospace, Menlo, monospace";
+                ctx.fillText(d === 0 ? "0" : (d > 0 ? "−" : "+") + Math.abs(d), x + S / 2, y + S / 2 + 10);
+              }
+            }
+          }
+          fillCell(PICK.r, PICK.c, WATER);
+        }
+
+        // ---- phase 2: one droplet walking down
+        // Starts high on a shoulder and ends in a genuine interior hollow rather
+        // than running off the edge, so the "nothing lower" label is true.
+        const PATH = (() => {
+          const path = [{ r: 0, c: 22 }];
+          for (let i = 0; i < 90; i++) {
+            const last = path[path.length - 1];
+            const next = downhill(last.r, last.c);
+            if (!next) break;
+            path.push(next);
+          }
+          return path;
+        })();
+        function drawWalk(t) {
+          drawTerrain();
+          const upto = Math.min(PATH.length, Math.floor(t * PATH.length * 1.25) + 1);
+          for (let i = 0; i < upto; i++) fillCell(PATH[i].r, PATH[i].c, WATER, 0.34);
+          const head = PATH[Math.min(upto, PATH.length) - 1];
+          fillCell(head.r, head.c, WATER);
+          ringCell(head.r, head.c, "#fff", 1.5);
+          if (upto >= PATH.length) {
+            ctx.fillStyle = "rgba(8,11,16,0.8)";
+            const label = "nothing lower — it stays";
+            ctx.font = "600 12px system-ui, sans-serif";
+            const w = ctx.measureText(label).width + 16;
+            const bx = Math.min(W - w - 6, head.c * CW + 12), by = Math.max(6, head.r * CH - 26);
+            ctx.fillRect(bx, by, w, 22);
+            ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 1;
+            ctx.strokeRect(bx, by, w, 22);
+            ctx.fillStyle = "#e8edf3"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+            ctx.fillText(label, bx + 8, by + 11);
+          }
+        }
+
+        // ---- phase 3: many droplets, trails accumulating
+        const trail = new Float32Array(COLS * ROWS);
+        let drops = [];
+        // Stamp and fade are a pair, and the ratio is the whole point: a cell on
+        // a channel is crossed every frame and settles near 1, while ground
+        // crossed once in twenty frames sits near 0.1. Stamp harder or fade
+        // slower and the grid saturates into one blue rectangle, which says
+        // nothing. Same trade-off as the real trail layer.
+        const SEED_PER_FRAME = 3, STAMP = 0.055, FADE = 0.975;
+        function stepCrowd() {
+          for (let i = 0; i < SEED_PER_FRAME; i++) {
+            drops.push({ r: Math.floor(Math.random() * ROWS * 0.35),
+                         c: Math.floor(Math.random() * COLS), age: 0 });
+          }
+          const next = [];
+          for (const d of drops) {
+            const i = d.r * COLS + d.c;
+            trail[i] = Math.min(1, trail[i] + STAMP);
+            if (d.age > 55) continue;
+            const to = downhill(d.r, d.c);
+            next.push(to ? { r: to.r, c: to.c, age: d.age + 1 } : { ...d, age: d.age + 1 });
+          }
+          drops = next.slice(-700);
+          for (let i = 0; i < trail.length; i++) trail[i] *= FADE;
+        }
+        function drawCrowd() {
+          drawTerrain();
+          for (let i = 0; i < trail.length; i++) {
+            if (trail[i] < 0.06) continue;
+            fillCell((i / COLS) | 0, i % COLS, WATER, Math.min(0.8, trail[i]));
+          }
+          for (const d of drops) fillCell(d.r, d.c, WATER);
+        }
+
+        const PHASES = [
+          { ms: 2600, cap: "Every cell is one height.<span>About 30 m across, an integer number of metres — all the precision the source has.</span>",
+            draw: () => drawTerrain() },
+          { ms: 4200, cap: "A droplet scores its eight neighbours.<span>How far down is each one? The largest drop wins.</span>",
+            draw: drawInspect },
+          { ms: 4200, cap: "It moves to the steepest, one cell per tick.<span>When nothing around it is lower, it stops and soaks in where it is.</span>",
+            draw: drawWalk },
+          { ms: 6000, cap: "Thousands of them, and the valleys draw themselves.<span>Nothing in the code knows what a river is. The channels are where the paths keep overlapping.</span>",
+            draw: null },
+        ];
+
+        let phase = 0, phaseStart = 0, raf = null;
+        function frame(now) {
+          if (!phaseStart) phaseStart = now;
+          const p = PHASES[phase];
+          const t = Math.min(1, (now - phaseStart) / p.ms);
+          if (phase === 3) { stepCrowd(); drawCrowd(); } else p.draw(t);
+          if (t >= 1) {
+            phase = (phase + 1) % PHASES.length;
+            phaseStart = now;
+            if (phase === 3) { trail.fill(0); drops = []; }
+            setCaption();
+          }
+          raf = requestAnimationFrame(frame);
+        }
+        function setCaption() {
+          cap.innerHTML = PHASES[phase].cap;
+          dots.forEach((d, i) => d.classList.toggle("on", i === phase));
+        }
+
+        // Motion is decoration here; the steps below the figure say the same thing.
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          for (let i = 0; i < 900; i++) stepCrowd();
+          drawCrowd();
+          phase = 3;
+          setCaption();
+        } else {
+          setCaption();
+          // Only animate while it is on screen; a canvas looping in a background
+          // tab is pure battery.
+          const io = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+              if (e.isIntersecting && raf === null) { phaseStart = 0; raf = requestAnimationFrame(frame); }
+              else if (!e.isIntersecting && raf !== null) { cancelAnimationFrame(raf); raf = null; }
+            }
+          }, { threshold: 0.15 });
+          io.observe(cv);
+        }
+      })();
+    </script>
+  </body>
+</html>

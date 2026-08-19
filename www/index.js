@@ -46,6 +46,10 @@ const OVERLAY_MS = 80;
 // and the position range is wider than the pixel width, for keyboard steps.
 const MANUAL_MAX_MM = 1000;
 const manualRateFor = (position) => ((position / 200) ** 2) * MANUAL_MAX_MM;
+// The square curve lands on values like 864.9000000000001, so every place that
+// shows a rate goes through here. One decimal while the numbers are small
+// enough for it to matter, whole millimetres above that.
+const formatRate = (mm) => (mm < 10 ? mm.toFixed(1) : String(Math.round(mm)));
 // One replay step per this long. The tiles are HTTP-cached after the first
 // lap, so a second pass round the loop costs nothing.
 const REPLAY_STEP_MS = 900;
@@ -402,11 +406,16 @@ tickRange.dispatchEvent(new Event("input"));
 // zoomSnap 0 lets fitBounds land on a fractional zoom, so a selected area fills
 // the screen instead of dropping to the next whole zoom that happens to contain
 // it — the difference between the simulation being the view and being a stamp.
-const map = L.map("map", { zoomSnap: 0 }).setView([40.75, 30.4], ZOOM);
+// Zoom control lives bottom-right: the search bar owns top-left and the
+// how-it-works link owns top-right.
+const map = L.map("map", { zoomSnap: 0, zoomControl: false }).setView([40.75, 30.4], ZOOM);
+L.control.zoom({ position: "bottomright" }).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
+  // The elevation licence wants its eleven national surveys credited; the full
+  // list lives on /how, which is the reasonable place for it in this medium.
   attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> | <a href="/how#attribution">Data sources</a>',
 }).addTo(map);
 
 let firstCorner = null;
@@ -638,7 +647,7 @@ async function showFrame(index) {
 function applyManualRain() {
   if (!sim) return;
   applyRain(new Float32Array(sim.width * sim.height).fill(manualRate), null, 1);
-  setRainStatus(`Manual rain: ${manualRate} mm/h everywhere.`);
+  setRainStatus(`Manual rain: ${formatRate(manualRate)} mm/h everywhere.`);
 }
 
 // Elevation is what the user waited for, so radar is fetched after the terrain
@@ -721,10 +730,7 @@ $("frame-range").addEventListener("input", (event) => {
 const rainMm = $("rain-mm");
 rainMm.addEventListener("input", () => {
   manualRate = manualRateFor(Number(rainMm.value));
-  // One decimal while the numbers are small enough for it to matter.
-  $("rain-mm-display").textContent = !manualRate
-    ? "off"
-    : `${manualRate < 10 ? manualRate.toFixed(1) : Math.round(manualRate)} mm/h`;
+  $("rain-mm-display").textContent = !manualRate ? "off" : `${formatRate(manualRate)} mm/h`;
   if (manualRate) applyManualRain();
   else showFrame(frameIndex); // zero hands the grid back to the radar
 });
@@ -888,4 +894,34 @@ searchBox.addEventListener("blur", () => setTimeout(closeResults, 120));
 // Typing in the box must not also be typing at the map underneath it.
 for (const event of ["keydown", "keypress", "dblclick", "wheel", "mousedown"]) {
   L.DomEvent.on($("place-search").parentElement, event, L.DomEvent.stopPropagation);
+}
+
+// ------------------------------------------------------------------ presets
+
+// A one-click shortlist of dramatic terrain. The span reads as ~410x400 cells
+// at mid-latitudes but Mercator stretches height with latitude — Glen Coe at
+// 56.7°N is 409x531 — so a higher-latitude entry needs rechecking against the
+// 600 cap before it ships.
+const PRESETS = [
+  { name: "Geyve Gorge", lat: 40.47, lon: 30.29 },
+  { name: "Lauterbrunnen", lat: 46.57, lon: 7.91 },
+  { name: "Yosemite Valley", lat: 37.73, lon: -119.6 },
+  { name: "Kaçkar Mountains", lat: 40.83, lon: 41.16 },
+  { name: "Glen Coe", lat: 56.66, lon: -5.07 },
+];
+const PRESET_SPAN = { lat: 0.1, lon: 0.14 };
+
+for (const preset of PRESETS) {
+  const button = document.createElement("button");
+  button.textContent = preset.name;
+  button.addEventListener("click", () => {
+    if (busy) return;
+    setSelecting(false);
+    const { lat, lon } = preset;
+    select(L.latLngBounds(
+      [lat - PRESET_SPAN.lat / 2, lon - PRESET_SPAN.lon / 2],
+      [lat + PRESET_SPAN.lat / 2, lon + PRESET_SPAN.lon / 2]
+    ));
+  });
+  $("presets").append(button);
 }

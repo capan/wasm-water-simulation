@@ -8,3 +8,4 @@ wasm-pack.log
 .DS_Store
 /www/dist
 .idea/
+deploy/deploy.env

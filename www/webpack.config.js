@@ -10,13 +10,16 @@ module.exports = {
     path: path.resolve(__dirname, "dist"),
     filename: "bootstrap.js",
   },
-  mode: "development",
+  // Development by default so `npm start` keeps readable stack traces. The
+  // Dockerfile sets NODE_ENV=production, which is what the deployed bundle gets.
+  mode: process.env.NODE_ENV === "production" ? "production" : "development",
   devServer: {
     static: [{ directory: path.resolve(__dirname, "dist") }],
   },
   plugins: [
     new CopyWebpackPlugin([
       { from: "index.html", to: "index.html" },
+      { from: "how.html", to: "how.html" },
       // these pages load the modules natively, no bundling involved
       { from: "diagnose.html", to: "diagnose.html" },
       { from: "soilcheck.html", to: "soilcheck.html" },
