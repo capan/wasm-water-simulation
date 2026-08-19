@@ -406,7 +406,10 @@ tickRange.dispatchEvent(new Event("input"));
 // zoomSnap 0 lets fitBounds land on a fractional zoom, so a selected area fills
 // the screen instead of dropping to the next whole zoom that happens to contain
 // it — the difference between the simulation being the view and being a stamp.
-const map = L.map("map", { zoomSnap: 0 }).setView([40.75, 30.4], ZOOM);
+// Zoom control lives bottom-right: the search bar owns top-left and the
+// how-it-works link owns top-right.
+const map = L.map("map", { zoomSnap: 0, zoomControl: false }).setView([40.75, 30.4], ZOOM);
+L.control.zoom({ position: "bottomright" }).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
   maxZoom: 19,
   // The elevation licence wants its eleven national surveys credited; the full
@@ -891,4 +894,34 @@ searchBox.addEventListener("blur", () => setTimeout(closeResults, 120));
 // Typing in the box must not also be typing at the map underneath it.
 for (const event of ["keydown", "keypress", "dblclick", "wheel", "mousedown"]) {
   L.DomEvent.on($("place-search").parentElement, event, L.DomEvent.stopPropagation);
+}
+
+// ------------------------------------------------------------------ presets
+
+// A one-click shortlist of dramatic terrain. The span reads as ~410x400 cells
+// at mid-latitudes but Mercator stretches height with latitude — Glen Coe at
+// 56.7°N is 409x531 — so a higher-latitude entry needs rechecking against the
+// 600 cap before it ships.
+const PRESETS = [
+  { name: "Geyve Gorge", lat: 40.47, lon: 30.29 },
+  { name: "Lauterbrunnen", lat: 46.57, lon: 7.91 },
+  { name: "Yosemite Valley", lat: 37.73, lon: -119.6 },
+  { name: "Kaçkar Mountains", lat: 40.83, lon: 41.16 },
+  { name: "Glen Coe", lat: 56.66, lon: -5.07 },
+];
+const PRESET_SPAN = { lat: 0.1, lon: 0.14 };
+
+for (const preset of PRESETS) {
+  const button = document.createElement("button");
+  button.textContent = preset.name;
+  button.addEventListener("click", () => {
+    if (busy) return;
+    setSelecting(false);
+    const { lat, lon } = preset;
+    select(L.latLngBounds(
+      [lat - PRESET_SPAN.lat / 2, lon - PRESET_SPAN.lon / 2],
+      [lat + PRESET_SPAN.lat / 2, lon + PRESET_SPAN.lon / 2]
+    ));
+  });
+  $("presets").append(button);
 }
