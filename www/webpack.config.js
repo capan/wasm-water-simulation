@@ -10,7 +10,9 @@ module.exports = {
     path: path.resolve(__dirname, "dist"),
     filename: "bootstrap.js",
   },
-  mode: "development",
+  // Development by default so `npm start` keeps readable stack traces. The
+  // Dockerfile sets NODE_ENV=production, which is what the deployed bundle gets.
+  mode: process.env.NODE_ENV === "production" ? "production" : "development",
   devServer: {
     static: [{ directory: path.resolve(__dirname, "dist") }],
   },

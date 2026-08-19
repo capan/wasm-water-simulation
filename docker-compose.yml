@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    container_name: water-app
+    restart: unless-stopped
+    # no ports: reachable only through the shared reverse proxy on this box
+    expose:
+      - "80"
+    networks:
+      - default
+      - web
+
+networks:
+  # ponytail: joins a network that already exists on the box rather than creating
+  # another one, so the proxy needs no compose change -- only a new site block.
+  # Set WEB_NETWORK in deploy/deploy.env; scripts/deploy.sh writes it to the
+  # server's .env before building.
+  web:
+    external: true
+    name: ${WEB_NETWORK:-web}

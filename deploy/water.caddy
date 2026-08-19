@@ -1,0 +1,23 @@
+# This site's routing, owned by this repo. scripts/deploy.sh drops it into the
+# sites directory of the shared Caddy that already owns 80/443 on the box, which
+# picks it up via `import /etc/caddy/sites/*.caddy`. That directory and the
+# proxy's container name are per-box, so they live in deploy/deploy.env.
+#
+# `water-app` resolves because this stack joins the shared external network (see
+# docker-compose.yml). Caddy fetches the Let's Encrypt cert automatically.
+water.huseyincapan.dev {
+	encode zstd gzip
+	reverse_proxy water-app:80
+
+	# Access log for GoAccess (`--log-format=CADDY` reads this JSON as-is).
+	# /var/log/caddy is already mounted on the shared Caddy by the isochrone
+	# stack (CADDY_LOGS_DIR), so enabling this needs no change over there.
+	# Caddy rotates the file itself; five 50MiB files is the disk ceiling.
+	log {
+		output file /var/log/caddy/water.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+		format json
+	}
+}

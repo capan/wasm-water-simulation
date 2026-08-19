@@ -66,6 +66,21 @@ cd www && npm test       # tile math, elevation, rain, soil, search
 The JS suites are plain `node file.test.mjs` with `node:assert`. No framework,
 no runner, no config.
 
+## Deploy
+
+Live at https://water.huseyincapan.dev. The image builds the wasm and the bundle
+itself, then throws both toolchains away and serves the static output with Caddy,
+which gets the `application/wasm` MIME type right without being told.
+
+```sh
+cp deploy/deploy.env.example deploy/deploy.env   # once, fill in for your box
+./scripts/deploy.sh
+```
+
+The script ships `git archive HEAD`, so commit first. It refuses a dirty tree.
+Nothing about the target machine lives in this repo: the host layout goes in
+`deploy/deploy.env` (gitignored) and the ssh address in `~/.ssh/config`.
+
 ## Roadmap
 
 - [x] Basic water flow dynamics

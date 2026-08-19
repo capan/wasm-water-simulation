@@ -1,0 +1,14 @@
+.git
+target
+pkg
+www/node_modules
+www/dist
+.DS_Store
+.idea
+.claude
+.plan
+.playwright-mcp
+graph
+CLAUDE.md
+screenshot.png
+scripts

@@ -1,0 +1,9 @@
+# Inside the container only. The public hostname, TLS and the access log all
+# belong to the shared Caddy on the box; this one just hands over files. Caddy
+# serves .wasm as application/wasm without being told, which is the whole
+# reason it is here rather than nginx.
+:80 {
+	root * /srv
+	file_server
+	encode zstd gzip
+}
