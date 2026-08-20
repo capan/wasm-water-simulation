@@ -776,17 +776,18 @@ $("frame-range").addEventListener("input", (event) => {
 });
 
 const rainGain = $("rain-gain");
-// Also called when the climate baseline lands, which is after boot: the mm/h
-// half of this readout is a property of the field, not of the slider.
+// Reads the field, so it has to run *after* setGain — reading first showed each
+// move's multiplier next to the previous move's mm/h, which during a drag looks
+// like the number is flickering. Also called when the climate baseline lands,
+// which is after boot: the mm/h half is a property of the field, not the slider.
 function showRainGain() {
-  const gain = gainFor(Number(rainGain.value));
   $("rain-gain-display").textContent =
-    `${formatRate(gain)}x (~${formatRate(meanRate(field.rates()))} mm/h)`;
-  return gain;
+    `${formatRate(gainFor(Number(rainGain.value)))}x (~${formatRate(meanRate(field.rates()))} mm/h)`;
 }
 rainGain.addEventListener("input", () => {
-  field.setGain(showRainGain());
+  field.setGain(gainFor(Number(rainGain.value)));
   rainLayerDirty = true;
+  showRainGain();
   draw();
 });
 rainGain.dispatchEvent(new Event("input"));
