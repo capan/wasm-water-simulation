@@ -26,7 +26,7 @@ in red is a 256 m elevation error.
 | Layer | Source |
 |---|---|
 | Elevation | AWS Terrain Tiles (terrarium PNG) |
-| Rain | RainViewer radar |
+| Rain | RainViewer radar + Open-Meteo ERA5 climate baseline |
 | Soil | ISRIC SoilGrids sand/silt/clay |
 | Place search | Photon |
 | Basemap | CARTO / OpenStreetMap |
@@ -36,6 +36,8 @@ src/lib.rs        the simulation, pure Rust
 www/tiles.mjs     tile math and the shared fetch/decode/stitch
 www/elevation.mjs terrain tiles to metres
 www/rain.mjs      radar to mm/h per cell
+www/climate.mjs   long-term mean rain from Open-Meteo ERA5
+www/rainfield.mjs composed rain field (radar + climate + gain + brush)
 www/soil.mjs      texture to infiltration capacity
 www/places.mjs    place name to a map view
 www/index.js      map, render loop, rain spawner, UI

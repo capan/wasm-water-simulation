@@ -6,6 +6,8 @@ import {
 import { radarFrames, fetchRain } from "./rain.mjs";
 import { fetchSoil, infiltrationGrid } from "./soil.mjs";
 import { findPlaces } from "./places.mjs";
+import * as field from "./rainfield.mjs";
+import { meanRain } from "./climate.mjs";
 
 // Chosen against the hypsometric ramp, not in isolation: the ramp runs from dark
 // green to near-white, so no one colour has strong luminance contrast at both
@@ -39,14 +41,14 @@ const SEARCH_DEBOUNCE_MS = 280;
 // 26 ms frame — so the display refreshes on its own clock and the simulation is
 // left free to run at whatever rate it was asked for.
 const OVERLAY_MS = 80;
-// The manual slider spans nothing to a cloudburst, but the interesting range is
-// the bottom of it: 2-20 mm/h is ordinary rain and is where the soil gate and
-// the trails actually do something. A linear control would put all of that in
-// the first two per cent of travel, so position maps to rate on a square curve
-// and the position range is wider than the pixel width, for keyboard steps.
-const MANUAL_MAX_MM = 1000;
-const manualRateFor = (position) => ((position / 200) ** 2) * MANUAL_MAX_MM;
-// The square curve lands on values like 864.9000000000001, so every place that
+// The gain multiplies the composed radar+climate field rather than replacing
+// it, so 1x always shows what is actually falling. Climate baselines span
+// three orders of magnitude — ~0.0005 mm/h in deserts to ~0.28 mm/h in the wet
+// tropics — so a log scale is what makes the low end reachable at all; a
+// linear slider would put all of that in the first tenth of a percent of travel.
+const GAIN_MAX = 1000;
+const gainFor = (position) => GAIN_MAX ** (position / 100);
+// The curve above lands on values like 864.9000000000001, so every place that
 // shows a rate goes through here. One decimal while the numbers are small
 // enough for it to matter, whole millimetres above that.
 const formatRate = (mm) => (mm < 10 ? mm.toFixed(1) : String(Math.round(mm)));
@@ -85,7 +87,7 @@ const setStatus = (text, isError = false) => {
 // Controls that need a loaded simulation, and controls that additionally need
 // a radar frame list. Both start disabled in the markup: a control that looks
 // live but silently does nothing is worse than one that is visibly off.
-const SIM_CONTROLS = ["play-pause", "step", "tick-range", "rain-toggle", "rain-mm"];
+const SIM_CONTROLS = ["play-pause", "step", "tick-range", "rain-toggle", "rain-gain"];
 const RADAR_CONTROLS = ["replay", "frame-range"];
 const SOIL_CONTROLS = ["soil-toggle"];
 const enable = (ids, on) => ids.forEach((id) => ($(id).disabled = !on));
@@ -101,7 +103,8 @@ function boot(data, grid) {
   const metres = metresPerCell(grid);
   sim = {
     universe, width, height, grid,
-    rain: null, // {rates, wet, frameTime, covered}, filled in once radar arrives
+    rain: field, // the rainfield singleton, for console access: sim.rain.rates()
+    radarFrameTime: null, // set once a radar frame lands; drives the "N min ago" readout
     soil: null, // {rates, covered}, filled in once the soil survey arrives
     // Near-opaque so the relief reads true; the sliver of basemap that shows
     // through is enough to place it without muddying the colours.
@@ -199,8 +202,9 @@ function renderTerrain(data, width, height, universe, alpha, metres) {
   return terrain;
 }
 
-// Rain shading, painted once per radar frame at one pixel per cell and blitted
-// like the terrain. Rates span three orders of magnitude, so the square root
+// Rain shading, painted whenever the composed field changes (radar, gain,
+// brush or climate) at one pixel per cell and blitted like the terrain, not
+// on every frame. Rates span three orders of magnitude, so the square root
 // keeps a drizzle visible without washing out a downpour. The alpha ceiling is
 // deliberately low: this is a tint saying "it is raining here", and the terrain,
 // the trails and the droplets all have to stay readable through it. Rain and
@@ -252,30 +256,35 @@ function renderSoilLayer(rates, width, height) {
  * rectangle in the same Web Mercator space the map uses.
  */
 let lastOverlayPush = 0;
+// Rain shading is cheap to blit but not to repaint — repainting it walks every
+// cell — so it is cached like the terrain and only rebuilt when the field
+// actually changed (a radar frame, a gain move, a brush stroke, a new area).
+let rainLayer = null;
+let rainLayerDirty = true;
 
 function draw(force = false) {
   if (!simOverlay) return;
   const now = performance.now();
   if (!force && now - lastOverlayPush < OVERLAY_MS) return;
   lastOverlayPush = now;
-  const { universe, width, height, terrain, frame, rain } = sim;
+  const { universe, width, height, terrain, frame } = sim;
   const water = universe.water_cells(); // flat [row, col, ...]
   const fctx = frame.getContext("2d");
+
+  if (rainOn() && rainLayerDirty) {
+    rainLayer = renderRainLayer(field.rates(), width, height);
+    rainLayerDirty = false;
+  }
 
   fctx.clearRect(0, 0, width, height);
   fctx.drawImage(terrain, 0, 0);
   if (soilOn() && sim.soil?.layer) fctx.drawImage(sim.soil.layer, 0, 0);
-  if (rainOn() && rain?.layer) fctx.drawImage(rain.layer, 0, 0);
+  if (rainOn() && rainLayer) fctx.drawImage(rainLayer, 0, 0);
   fctx.drawImage(sim.trails, 0, 0);
   fctx.fillStyle = WATER_COLOR;
   for (let i = 0; i < water.length; i += 2) fctx.fillRect(water[i + 1], water[i], 1, 1);
   simOverlay.setUrl(frame.toDataURL());
 }
-
-/** Cell indices the radar says are wet, so the spawner skips the dry majority. */
-const wetCells = (rates) => Uint32Array.from(
-  (function* () { for (let i = 0; i < rates.length; i++) if (rates[i] > 0) yield i; })()
-);
 
 const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
 
@@ -302,25 +311,24 @@ function coprimeStride(length) {
  * invented physics over water and over most of a city.
  */
 function spawnRain() {
-  const { rain, universe, width } = sim;
-  if (!rain || !rainOn()) return;
+  if (!rainOn()) return;
+  const { universe, width } = sim;
   let budget = WATER_CAP - universe.water_cells_count();
   if (budget <= 0) return;
 
-  const { wet, rates } = rain;
+  const rates = field.rates();
   const capacity = soilOn() ? sim.soil?.rates : null;
 
-  // The budget usually runs out long before the list does, so which cells get
+  // The budget usually runs out long before the grid does, so which cells get
   // visited first decides where the rain lands. Walking end to end from a random
   // start spreads the *starting point* around but still spawns one contiguous
   // run of row-major indices, which is a horizontal band across the map. Step by
-  // a stride coprime with the length instead: it still reaches every entry
+  // a stride coprime with the length instead: it still reaches every cell
   // exactly once, but an early stop leaves a subset scattered over the whole
   // grid rather than a block of adjacent rows.
-  const start = Math.floor(Math.random() * wet.length);
-  const stride = coprimeStride(wet.length);
-  for (let n = 0, k = start; n < wet.length && budget > 0; n++, k = (k + stride) % wet.length) {
-    const i = wet[k];
+  const start = Math.floor(Math.random() * rates.length);
+  const stride = coprimeStride(rates.length);
+  for (let n = 0, i = start; n < rates.length && budget > 0; n++, i = (i + stride) % rates.length) {
     const soaks = capacity ? capacity[i] : 0;
     const runoff = soaks > 0 ? rates[i] - soaks : rates[i];
     if (runoff > 0 && Math.random() < runoff * RAIN_FACTOR) {
@@ -483,15 +491,7 @@ function cellUnder(latlng) {
 }
 
 map.on("click", (event) => {
-  // Not selecting: a click on the simulated area is water, and anywhere else is
-  // just the map doing what maps do.
-  if (!selecting) {
-    const cell = cellUnder(event.latlng);
-    if (!cell) return;
-    sim.universe.handle_user_input(cell.row, cell.col);
-    draw(true);
-    return;
-  }
+  if (!selecting) return; // not picking corners: dragging paints rain instead
   if (busy) return;
   if (!firstCorner) {
     firstCorner = event.latlng;
@@ -504,6 +504,49 @@ map.on("click", (event) => {
   select(bounds);
 });
 
+// --------------------------------------------------------------- rain brush
+
+// Drag paints rain onto the field; shift-drag erases it. Map panning has to
+// step aside for the duration of a stroke, or the same drag would both paint
+// and pan. Pointer capture (not Leaflet's own mouse events) is what makes a
+// stroke that leaves the container keep delivering move/up events here rather
+// than sticking the brush "on".
+let paintingId = null;
+const mapEl = $("map");
+
+const cellAt = (event) => cellUnder(map.mouseEventToLatLng(event));
+
+function paintAt(event) {
+  const cell = cellAt(event);
+  if (cell) field.paint(cell.row, cell.col, event.shiftKey);
+  rainLayerDirty = true;
+}
+
+mapEl.addEventListener("pointerdown", (event) => {
+  if (!sim || selecting || event.button !== 0 || !cellAt(event)) return;
+  if (paintingId !== null) return; // a second finger must not hijack the stroke
+  paintingId = event.pointerId;
+  map.dragging.disable();
+  mapEl.setPointerCapture(event.pointerId);
+  paintAt(event);
+  draw(true);
+});
+
+mapEl.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== paintingId) return;
+  paintAt(event);
+  draw(); // throttled — a drag fires far faster than the field needs repainting
+});
+
+function stopPainting(event) {
+  if (event.pointerId !== paintingId) return;
+  paintingId = null;
+  map.dragging.enable();
+  mapEl.releasePointerCapture(event.pointerId);
+}
+mapEl.addEventListener("pointerup", stopPainting);
+mapEl.addEventListener("pointercancel", stopPainting);
+
 async function select(bounds) {
   busy = true;
   setStatus("Fetching elevation tiles…");
@@ -515,6 +558,20 @@ async function select(bounds) {
       west: bounds.getWest(),
     };
     const { data, width, height, grid } = await fetchElevation(bbox);
+
+    // A new size means the old radar frame and climate mean belong to the old
+    // window, so the field drops both (see rainfield.mjs). The sim must start
+    // on terrain immediately, so the climate baseline is not awaited here —
+    // it lands a moment later and just makes the shading redraw when it does.
+    field.setSize(width, height);
+    rainLayerDirty = true;
+    meanRain(grid).then((mmPerHour) => {
+      if (sim?.grid !== grid) return; // a newer selection arrived while we waited
+      field.setClimate(mmPerHour);
+      rainLayerDirty = true;
+      showRainGain();
+      draw();
+    });
 
     for (const layer of [selectionBox, simOverlay]) if (layer) map.removeLayer(layer);
     const b = gridBounds(grid);
@@ -530,7 +587,7 @@ async function select(bounds) {
       paddingBottomRight: [40, 130], // clear of the dock
     });
     boot(data, grid);
-    setStatus(`Simulating ${width}x${height} cells at zoom ${grid.z}. Click the terrain to drop water.`);
+    setStatus(`Simulating ${width}x${height} cells at zoom ${grid.z}. Drag the terrain to paint rain, hold shift to erase.`);
     refreshRain();
     loadSoil(grid);
   } catch (error) {
@@ -588,12 +645,10 @@ setStatus(
 
 // The radar frame list is global, not per-simulation: re-selecting an area
 // re-reads the same frames. `live` means the scrubber is parked on the newest
-// frame and should follow new ones in; `manualRate` above zero overrides the
-// radar with uniform synthetic rain.
+// frame and should follow new ones in.
 let frames = [];
 let frameIndex = 0;
 let live = true;
-let manualRate = 0;
 let replayTimer = null;
 let rainBusy = false;
 
@@ -603,15 +658,18 @@ const setRainStatus = (text) => {
 
 const rainOn = () => $("rain-toggle").checked;
 
-/** Install a rain grid and repaint. `frameTime` null means "not from radar". */
-function applyRain(rates, frameTime, covered) {
-  sim.rain = {
-    rates,
-    wet: wetCells(rates),
-    frameTime,
-    covered,
-    layer: renderRainLayer(rates, sim.width, sim.height),
-  };
+/** Mean mm/h across the field, for the gain readout. No allocation. */
+const meanRate = (rates) => {
+  let sum = 0;
+  for (let i = 0; i < rates.length; i++) sum += rates[i];
+  return rates.length ? sum / rates.length : 0;
+};
+
+/** Install a radar frame onto the field and repaint. */
+function applyRain(rates, frameTime) {
+  field.setRadar(rates);
+  sim.radarFrameTime = frameTime;
+  rainLayerDirty = true;
   showRadarAge();
   draw();
 }
@@ -621,16 +679,13 @@ async function showFrame(index) {
   const grid = sim?.grid;
   const frame = frames[index];
   if (!grid || !frame || rainBusy) return;
-  if (frame.time === sim.rain?.frameTime) return; // already showing it
+  if (frame.time === sim.radarFrameTime) return; // already showing it
 
   rainBusy = true;
   try {
     const { rates, covered, wet } = await fetchRain(grid, frame);
     if (sim?.grid !== grid) return; // a newer selection arrived while we waited
-    // Manual rain may have been switched on while this was in flight; the fetch
-    // that started before it must not overwrite what the user just asked for.
-    if (manualRate) return;
-    applyRain(rates, frame.time, covered);
+    applyRain(rates, frame.time);
     setRainStatus(
       covered === 0
         ? "No radar coverage here — rain is unknown, not zero."
@@ -641,13 +696,6 @@ async function showFrame(index) {
   } finally {
     rainBusy = false;
   }
-}
-
-/** Uniform synthetic rain, so heavy weather can be seen without hunting for it. */
-function applyManualRain() {
-  if (!sim) return;
-  applyRain(new Float32Array(sim.width * sim.height).fill(manualRate), null, 1);
-  setRainStatus(`Manual rain: ${formatRate(manualRate)} mm/h everywhere.`);
 }
 
 // Elevation is what the user waited for, so radar is fetched after the terrain
@@ -668,7 +716,7 @@ async function refreshRain() {
       $("frame-range").value = newest;
     }
     showFrameTime();
-    if (!manualRate) await showFrame(frameIndex);
+    await showFrame(frameIndex);
   } catch (error) {
     // Keep raining from the grid we already have; the next poll may recover.
     setRainStatus(`Radar unavailable: ${error.message}`);
@@ -690,7 +738,7 @@ function showFrameTime() {
 // Ticks on its own timer rather than in the render loop, so the age keeps
 // counting up while the simulation is paused.
 function showRadarAge() {
-  const frameTime = sim?.rain?.frameTime;
+  const frameTime = sim?.radarFrameTime;
   const minutes = frameTime && Math.round((Date.now() / 1000 - frameTime) / 60);
   $("radar-age").textContent = !frameTime
     ? ""
@@ -715,7 +763,7 @@ $("replay").addEventListener("click", () => {
     live = frameIndex === frames.length - 1;
     $("frame-range").value = frameIndex;
     showFrameTime();
-    if (!manualRate) showFrame(frameIndex);
+    showFrame(frameIndex);
   }, REPLAY_STEP_MS);
 });
 
@@ -724,16 +772,25 @@ $("frame-range").addEventListener("input", (event) => {
   frameIndex = Number(event.target.value);
   live = frameIndex === frames.length - 1; // parked on the newest frame = follow it
   showFrameTime();
-  if (!manualRate) showFrame(frameIndex);
+  showFrame(frameIndex);
 });
 
-const rainMm = $("rain-mm");
-rainMm.addEventListener("input", () => {
-  manualRate = manualRateFor(Number(rainMm.value));
-  $("rain-mm-display").textContent = !manualRate ? "off" : `${formatRate(manualRate)} mm/h`;
-  if (manualRate) applyManualRain();
-  else showFrame(frameIndex); // zero hands the grid back to the radar
+const rainGain = $("rain-gain");
+// Reads the field, so it has to run *after* setGain — reading first showed each
+// move's multiplier next to the previous move's mm/h, which during a drag looks
+// like the number is flickering. Also called when the climate baseline lands,
+// which is after boot: the mm/h half is a property of the field, not the slider.
+function showRainGain() {
+  $("rain-gain-display").textContent =
+    `${formatRate(gainFor(Number(rainGain.value)))}x (~${formatRate(meanRate(field.rates()))} mm/h)`;
+}
+rainGain.addEventListener("input", () => {
+  field.setGain(gainFor(Number(rainGain.value)));
+  rainLayerDirty = true;
+  showRainGain();
+  draw();
 });
+rainGain.dispatchEvent(new Event("input"));
 
 $("rain-toggle").addEventListener("change", () => {
   if (sim) draw(true); // show or hide the shading immediately, even while paused

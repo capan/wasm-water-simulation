@@ -255,6 +255,54 @@
         color: var(--ink);
       }
 
+      /* --------------------------------------------------------- rain panel */
+
+      .rain-panel {
+        position: fixed;
+        right: 14px;
+        top: 56px;
+        z-index: 1000;
+        width: 250px;
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        backdrop-filter: blur(14px);
+      }
+      .rain-panel h2 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .rain-panel .row { display: flex; align-items: center; gap: 7px; }
+      .rain-panel input[type="range"] { flex: 1; width: auto; }
+      /* A slider takes the width it is given, so its readout is what gets
+         squeezed — and these are mono strings that wrap into a stack of two or
+         three lines. Give each readout its own full line under the slider. */
+      .rain-panel .row.stacked { flex-wrap: wrap; }
+      .rain-panel .row.stacked > output,
+      .rain-panel .row.stacked > .line {
+        flex-basis: 100%;
+        display: flex;
+        gap: 7px;
+        justify-content: space-between;
+        white-space: nowrap;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--dim);
+      }
+      #rain-status { color: var(--dim); font-size: 13px; }
+      #rain-status:empty { display: none; }
+      .rain-panel .info { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--dim); }
+      .rain-panel .info p { margin: 0; }
+      .rain-panel .info .term { color: var(--ink); font-weight: 500; }
+
       /* Follows the pointer over the simulated area; placed from script. */
       .readout {
         position: fixed;
@@ -292,7 +340,6 @@
 
     <div class="status">
       <div id="status"></div>
-      <div id="rain-status"></div>
       <div id="soil-status"></div>
     </div>
 
@@ -312,26 +359,41 @@
       <output id="iteration" title="Water cells">0</output>
 
       <span class="sep"></span>
-      <label title="Spawn droplets where it is raining">
-        <input id="rain-toggle" type="checkbox" checked disabled />
-        <span class="name">Rain</span>
-      </label>
-      <label title="Override the radar with even rain everywhere">
-        <input id="rain-mm" min="0" max="200" step="1" type="range" value="0" disabled />
-        <output id="rain-mm-display">off</output>
-      </label>
-
-      <span class="sep"></span>
       <label title="Let the ground absorb water">
         <input id="soil-toggle" type="checkbox" checked disabled />
         <span class="name">Soil</span>
       </label>
+    </div>
 
-      <span class="sep"></span>
-      <button id="replay" class="icon" title="Replay the last two hours" disabled>▶</button>
-      <input id="frame-range" min="0" max="0" type="range" value="0" disabled />
-      <output id="frame-time">live</output>
-      <output id="radar-age"></output>
+    <div class="rain-panel">
+      <h2>Rain</h2>
+
+      <label class="row" title="Spawn droplets where it is raining">
+        <input id="rain-toggle" type="checkbox" checked disabled />
+        <span class="name">Rain</span>
+      </label>
+      <label class="row stacked" title="Multiply rain intensity — radar and the climate baseline together, log scale 1x to 1000x">
+        <input id="rain-gain" min="0" max="100" step="1" type="range" value="0" disabled />
+        <output id="rain-gain-display">1x</output>
+      </label>
+
+      <div class="row stacked">
+        <button id="replay" class="icon" title="Replay the last two hours" disabled>▶</button>
+        <input id="frame-range" min="0" max="0" type="range" value="0" disabled />
+        <span class="line">
+          <output id="frame-time">live</output>
+          <output id="radar-age"></output>
+        </span>
+      </div>
+
+      <div id="rain-status"></div>
+
+      <div class="info">
+        <p><span class="term">Live radar</span> RainViewer, ~1.2 km cells, refreshed every minute, last two hours replayable.</p>
+        <p><span class="term">Baseline</span> Open-Meteo ERA5, this area's 2020–2024 mean. Cells are ~28 km, so it is one rate for the whole window — the floor under radar gaps, which is most of the map.</p>
+        <p><span class="term">Gain</span> Multiplies radar and baseline together. Painted rain is not multiplied.</p>
+        <p><span class="term">Brush</span> Drag the map to paint 50 mm/h. Shift-drag erases.</p>
+      </div>
     </div>
 
     <script src="./bootstrap.js"></script>
