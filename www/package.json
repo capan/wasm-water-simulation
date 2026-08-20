@@ -7,7 +7,7 @@
   "scripts": {
     "build": "webpack --config webpack.config.js",
     "start": "webpack-dev-server",
-    "test": "node tiles.test.mjs && node elevation.test.mjs && node rain.test.mjs && node soil.test.mjs && node places.test.mjs"
+    "test": "node tiles.test.mjs && node elevation.test.mjs && node rain.test.mjs && node soil.test.mjs && node places.test.mjs && node climate.test.mjs && node rainfield.test.mjs"
   },
   "repository": {
     "type": "git",

@@ -316,9 +316,9 @@
         <input id="rain-toggle" type="checkbox" checked disabled />
         <span class="name">Rain</span>
       </label>
-      <label title="Override the radar with even rain everywhere">
-        <input id="rain-mm" min="0" max="200" step="1" type="range" value="0" disabled />
-        <output id="rain-mm-display">off</output>
+      <label title="Multiply rain intensity — radar and the climate baseline together, log scale 1x to 1000x">
+        <input id="rain-gain" min="0" max="100" step="1" type="range" value="0" disabled />
+        <output id="rain-gain-display">1x</output>
       </label>
 
       <span class="sep"></span>
