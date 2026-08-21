@@ -472,7 +472,7 @@ function setSelecting(on) {
   if (on) {
     setStatus("Click the first corner on the map.");
   } else if (!sim) {
-    setStatus("Pick an area to simulate — up to " + MAX_GRID + "x" + MAX_GRID + " cells, roughly 15 km across.");
+    setStatus("Pick an area to simulate. Up to " + MAX_GRID + "x" + MAX_GRID + " cells, roughly 15 km across.");
   }
 }
 
@@ -638,7 +638,7 @@ map.on("mousemove", (event) => {
 map.on("mouseout", () => ($("readout").style.display = "none"));
 
 setStatus(
-  `Pick an area to simulate — up to ${MAX_GRID}x${MAX_GRID} cells, roughly 15 km across.`
+  `Pick an area to simulate. Up to ${MAX_GRID}x${MAX_GRID} cells, roughly 15 km across.`
 );
 
 // ---------------------------------------------------------------------- rain
